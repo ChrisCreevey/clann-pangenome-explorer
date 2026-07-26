@@ -9,6 +9,8 @@ import { parse, ColumnMappingNeeded } from "./parse/index.js";
 import { mountExplorer } from "./pangenome.js";
 import { renderColumnMapping } from "./render/column-mapping.js";
 import { decompressIfNeeded } from "./parse/compressed.js";
+import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB } from "./parse/annotation.js";
+import { keywordTag, listUploadTag } from "./analysis/tags.js";
 
 const explorerEl = document.getElementById("explorer");
 const columnMappingEl = document.getElementById("columnMapping");
@@ -22,6 +24,8 @@ const hMeta = document.getElementById("hMeta");
 const datasetMeta = document.getElementById("datasetMeta");
 
 let handle = null; // the live explorer instance, once a file is loaded
+let currentData = null; // the loaded PangenomeData, mutated in place by annotation/tagging
+let lastAnnotationText = null; // cached raw text, so "re-apply with these thresholds" doesn't need a re-upload
 
 function showError(msg) {
   errBox.textContent = msg;
@@ -38,8 +42,18 @@ function loadData(data, name) {
   hTitle.textContent = name || "";
   hMeta.textContent = `${data.meta.genomeCount} genomes · ${data.meta.groupCount} groups · ${data.meta.format}`;
   datasetMeta.textContent = `${name}: ${data.meta.genomeCount} genomes, ${data.meta.groupCount} gene groups (${data.meta.format}).`;
+  currentData = data;
+  lastAnnotationText = null;
+  document.getElementById("annotationStatus").textContent = "No annotation file loaded.";
+  document.getElementById("annotationConsensusControls").style.display = "none";
+  document.getElementById("tagListStatus").textContent = "";
   if (handle) handle = handle.setData(data);
   else handle = mountExplorer(explorerEl, data);
+}
+
+/** Re-render the explorer in place after annotation/tagging mutates currentData (no new file). */
+function refreshExplorer() {
+  if (handle) handle = handle.setData(currentData);
 }
 
 function openText(text, name) {
@@ -164,6 +178,83 @@ wrap.addEventListener("drop", (e) => {
   e.preventDefault(); dragDepth = 0; drop.classList.remove("on");
   const f = e.dataTransfer.files && e.dataTransfer.files[0];
   openFile(f);
+});
+
+// --- annotation upload (Workflow A/B auto-detected) ---
+const annotationFileInput = document.getElementById("annotationFileInput");
+const annotationStatus = document.getElementById("annotationStatus");
+const annotationConsensusControls = document.getElementById("annotationConsensusControls");
+document.getElementById("loadAnnotationBtn").addEventListener("click", () => annotationFileInput.click());
+
+function applyAnnotationText(text, name) {
+  if (!currentData) return;
+  const workflow = detectAnnotationWorkflow(currentData, text);
+  if (workflow === "unknown") {
+    showError(`Couldn't tell whether ${name} is one row per group or one row per gene — check its ID column matches your group IDs or constituent gene IDs.`);
+    return;
+  }
+  lastAnnotationText = text;
+  if (workflow === "A") {
+    const { matched, unmatchedIds } = applyWorkflowA(currentData, text);
+    annotationStatus.textContent = `${name}: Workflow A — ${matched} group${matched === 1 ? "" : "s"} annotated` +
+      (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched ID(s).` : ".");
+    annotationConsensusControls.style.display = "none";
+  } else {
+    const minCount = Number(document.getElementById("annMinCount").value) || 1;
+    const minPercent = Number(document.getElementById("annMinPercent").value) || 50;
+    const { matched, unmatchedIds, acceptedCount, rejectedCount } = applyWorkflowB(currentData, text, { minCount, minPercent });
+    annotationStatus.textContent = `${name}: Workflow B — ${matched} gene(s) matched, ${acceptedCount} group(s) reached consensus, ` +
+      `${rejectedCount} below threshold (breakdown still visible)` +
+      (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched gene ID(s).` : ".");
+    annotationConsensusControls.style.display = "";
+  }
+  refreshExplorer();
+}
+
+annotationFileInput.addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  annotationFileInput.value = "";
+  if (!f) return;
+  let text, name;
+  try { ({ text, filename: name } = await readTextFile(f)); }
+  catch (err) { showError(`Couldn't read ${f.name}: ${err && err.message ? err.message : err}`); return; }
+  try { applyAnnotationText(text, name); }
+  catch (err) { showError(`Couldn't parse ${name} as an annotation file: ${err && err.message ? err.message : err}`); }
+});
+
+document.getElementById("annReapply").addEventListener("click", () => {
+  if (!lastAnnotationText) return;
+  applyAnnotationText(lastAnnotationText, "annotation file");
+});
+
+// --- category tagging: keyword match or two-column list upload ---
+document.getElementById("tagKeywordBtn").addEventListener("click", () => {
+  if (!currentData) return;
+  const tagName = document.getElementById("tagName").value.trim();
+  const keywords = document.getElementById("tagKeywords").value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!tagName || !keywords.length) { showError("Enter a tag name and at least one keyword."); return; }
+  const count = keywordTag(currentData, tagName, keywords);
+  document.getElementById("tagListStatus").textContent = `Tagged ${count} group(s) as "${tagName}".`;
+  refreshExplorer();
+});
+
+const tagListFileInput = document.getElementById("tagListFileInput");
+document.getElementById("loadTagListBtn").addEventListener("click", () => tagListFileInput.click());
+tagListFileInput.addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  tagListFileInput.value = "";
+  if (!f || !currentData) return;
+  let text, name;
+  try { ({ text, filename: name } = await readTextFile(f)); }
+  catch (err) { showError(`Couldn't read ${f.name}: ${err && err.message ? err.message : err}`); return; }
+  try {
+    const { matched, unmatchedIds } = listUploadTag(currentData, text);
+    document.getElementById("tagListStatus").textContent = `${name}: tagged ${matched} group(s)` +
+      (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched ID(s).` : ".");
+    refreshExplorer();
+  } catch (err) {
+    showError(`Couldn't parse ${name} as a tag list: ${err && err.message ? err.message : err}`);
+  }
 });
 
 // --- footer: show the repo's live star count next to the "Like it?" button ---

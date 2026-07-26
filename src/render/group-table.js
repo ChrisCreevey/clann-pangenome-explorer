@@ -7,11 +7,12 @@ export const DEFAULT_COLS = ["groupId", "annotation", "freqClass", "genomesPrese
 const COL_LABELS = {
   groupId: "Group", annotation: "Annotation", freqClass: "Class",
   genomesPresentIn: "Genomes", sequencesTotal: "Sequences", avgCopiesPerGenome: "Avg copies",
-  consistencyScore: "Consistency",
+  consistencyScore: "Consistency", tags: "Tags",
 };
 
 function fmt(v) {
   if (v === undefined || v === null) return "";
+  if (Array.isArray(v)) return v.join(", ");
   if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(2);
   return String(v);
 }

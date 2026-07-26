@@ -1,0 +1,12 @@
+gene_id,annotation
+groupA_1,beta-lactamase
+groupA_2,beta-lactamase
+groupA_3,hypothetical protein
+groupB_1,efflux pump
+groupB_2,efflux pump
+groupC_1,membrane transporter
+groupD_1,transporter
+groupD_1b,transporter
+groupD_2,transporter
+groupD_3,other protein
+unknown_gene_99,mystery protein

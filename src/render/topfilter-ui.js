@@ -11,7 +11,8 @@
 // new file is loaded.
 
 import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../analysis/topfilter.js";
-import { renderGroupTable } from "./group-table.js";
+import { listTags } from "../analysis/tags.js";
+import { renderGroupTable, DEFAULT_COLS } from "./group-table.js";
 
 function card(titleText) {
   const c = document.createElement("div");
@@ -31,7 +32,8 @@ function readSidebarCriteria() {
     ? Number(document.getElementById("fMaxGenomes").value) : undefined;
   const minAvgCopiesPerGenome = document.getElementById("fMinAvgCopies").value
     ? Number(document.getElementById("fMinAvgCopies").value) : undefined;
-  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome };
+  const tags = [...document.querySelectorAll(".fTagCheckbox:checked")].map((cb) => cb.value);
+  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags };
 }
 
 function writeSidebarCriteria(criteria) {
@@ -42,9 +44,25 @@ function writeSidebarCriteria(criteria) {
   document.getElementById("fMinGenomes").value = criteria.minGenomesPresentIn ?? "";
   document.getElementById("fMaxGenomes").value = criteria.maxGenomesPresentIn ?? "";
   document.getElementById("fMinAvgCopies").value = criteria.minAvgCopiesPerGenome ?? "";
+  document.querySelectorAll(".fTagCheckbox").forEach((cb) => {
+    cb.checked = !!(criteria.tags && criteria.tags.includes(cb.value));
+  });
 }
 
-const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined };
+const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [] };
+
+/** Rebuild the tag checkboxes in the sidebar from the tags currently in use, preserving any that are still checked. */
+function populateTagCheckboxes(data) {
+  const row = document.getElementById("fTagsRow");
+  const container = document.getElementById("fTagsContainer");
+  const previouslyChecked = new Set([...container.querySelectorAll(".fTagCheckbox:checked")].map((cb) => cb.value));
+  const tags = listTags(data);
+  row.style.display = tags.length ? "" : "none";
+  container.innerHTML = tags.map(({ tag, count }) => `
+    <label class="row"><input type="checkbox" class="fTagCheckbox" value="${tag}" ${previouslyChecked.has(tag) ? "checked" : ""}> ${tag} (${count})</label>
+  `).join("");
+  container.querySelectorAll(".fTagCheckbox").forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
+}
 
 // module-level state, reassigned by mountTopFilterCards() on every mount
 let active = null; // { data, groupTableHandle, history: [criteria,...] }
@@ -184,12 +202,13 @@ function renderSingletonMultiCopyCard(panel, data) {
 /** Mount the Phase 4 cards into `panel` (already attached to the document) for `data`. */
 export function mountTopFilterCards(panel, data) {
   bindSidebarOnce();
+  populateTagCheckboxes(data);
 
   const filteredCard = card("Filtered groups");
   const tableDiv = document.createElement("div");
   filteredCard.appendChild(tableDiv);
   panel.appendChild(filteredCard);
-  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA));
+  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"] });
 
   active = { data, groupTableHandle, history: [DEFAULT_CRITERIA] };
   writeSidebarCriteria(DEFAULT_CRITERIA);

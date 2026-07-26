@@ -1,0 +1,251 @@
+group_id,annotation
+group_0000,efflux pump
+group_0001,flagellar protein
+group_0002,hypothetical protein
+group_0003,flagellar protein
+group_0004,hypothetical protein
+group_0005,hypothetical protein
+group_0006,hypothetical protein
+group_0007,membrane transporter
+group_0008,efflux pump
+group_0009,hypothetical protein
+group_0010,hypothetical protein
+group_0011,efflux pump
+group_0012,virulence factor
+group_0013,virulence factor
+group_0014,DNA polymerase
+group_0015,virulence factor
+group_0016,DNA polymerase
+group_0017,hypothetical protein
+group_0018,DNA polymerase
+group_0019,flagellar protein
+group_0020,DNA polymerase
+group_0021,membrane transporter
+group_0022,membrane transporter
+group_0023,beta-lactamase
+group_0024,efflux pump
+group_0025,efflux pump
+group_0026,membrane transporter
+group_0027,DNA polymerase
+group_0028,beta-lactamase
+group_0029,membrane transporter
+group_0030,DNA polymerase
+group_0031,DNA polymerase
+group_0032,efflux pump
+group_0033,hypothetical protein
+group_0034,flagellar protein
+group_0035,virulence factor
+group_0036,membrane transporter
+group_0037,hypothetical protein
+group_0038,hypothetical protein
+group_0039,efflux pump
+group_0040,beta-lactamase
+group_0041,hypothetical protein
+group_0042,DNA polymerase
+group_0043,membrane transporter
+group_0044,virulence factor
+group_0045,hypothetical protein
+group_0046,membrane transporter
+group_0047,membrane transporter
+group_0048,hypothetical protein
+group_0049,beta-lactamase
+group_0050,flagellar protein
+group_0051,flagellar protein
+group_0052,beta-lactamase
+group_0053,beta-lactamase
+group_0054,efflux pump
+group_0055,virulence factor
+group_0056,flagellar protein
+group_0057,efflux pump
+group_0058,hypothetical protein
+group_0059,efflux pump
+group_0060,efflux pump
+group_0061,DNA polymerase
+group_0062,hypothetical protein
+group_0063,DNA polymerase
+group_0064,membrane transporter
+group_0065,hypothetical protein
+group_0066,hypothetical protein
+group_0067,hypothetical protein
+group_0068,beta-lactamase
+group_0069,virulence factor
+group_0070,virulence factor
+group_0071,membrane transporter
+group_0072,hypothetical protein
+group_0073,efflux pump
+group_0074,membrane transporter
+group_0075,virulence factor
+group_0076,flagellar protein
+group_0077,beta-lactamase
+group_0078,efflux pump
+group_0079,hypothetical protein
+group_0080,hypothetical protein
+group_0081,beta-lactamase
+group_0082,membrane transporter
+group_0083,membrane transporter
+group_0084,DNA polymerase
+group_0085,DNA polymerase
+group_0086,flagellar protein
+group_0087,beta-lactamase
+group_0088,efflux pump
+group_0089,DNA polymerase
+group_0090,flagellar protein
+group_0091,beta-lactamase
+group_0092,DNA polymerase
+group_0093,DNA polymerase
+group_0094,flagellar protein
+group_0095,beta-lactamase
+group_0096,efflux pump
+group_0097,DNA polymerase
+group_0098,virulence factor
+group_0099,efflux pump
+group_0100,efflux pump
+group_0101,virulence factor
+group_0102,virulence factor
+group_0103,flagellar protein
+group_0104,hypothetical protein
+group_0105,membrane transporter
+group_0106,membrane transporter
+group_0107,efflux pump
+group_0108,flagellar protein
+group_0109,flagellar protein
+group_0110,hypothetical protein
+group_0111,hypothetical protein
+group_0112,hypothetical protein
+group_0113,hypothetical protein
+group_0114,beta-lactamase
+group_0115,hypothetical protein
+group_0116,hypothetical protein
+group_0117,efflux pump
+group_0118,flagellar protein
+group_0119,hypothetical protein
+group_0120,hypothetical protein
+group_0121,virulence factor
+group_0122,efflux pump
+group_0123,virulence factor
+group_0124,beta-lactamase
+group_0125,hypothetical protein
+group_0126,hypothetical protein
+group_0127,DNA polymerase
+group_0128,hypothetical protein
+group_0129,virulence factor
+group_0130,DNA polymerase
+group_0131,virulence factor
+group_0132,hypothetical protein
+group_0133,membrane transporter
+group_0134,hypothetical protein
+group_0135,flagellar protein
+group_0136,DNA polymerase
+group_0137,efflux pump
+group_0138,DNA polymerase
+group_0139,hypothetical protein
+group_0140,flagellar protein
+group_0141,beta-lactamase
+group_0142,membrane transporter
+group_0143,hypothetical protein
+group_0144,flagellar protein
+group_0145,flagellar protein
+group_0146,flagellar protein
+group_0147,efflux pump
+group_0148,hypothetical protein
+group_0149,flagellar protein
+group_0150,virulence factor
+group_0151,hypothetical protein
+group_0152,hypothetical protein
+group_0153,virulence factor
+group_0154,membrane transporter
+group_0155,beta-lactamase
+group_0156,membrane transporter
+group_0157,flagellar protein
+group_0158,hypothetical protein
+group_0159,efflux pump
+group_0160,hypothetical protein
+group_0161,DNA polymerase
+group_0162,efflux pump
+group_0163,beta-lactamase
+group_0164,flagellar protein
+group_0165,hypothetical protein
+group_0166,DNA polymerase
+group_0167,hypothetical protein
+group_0168,DNA polymerase
+group_0169,hypothetical protein
+group_0170,DNA polymerase
+group_0171,efflux pump
+group_0172,DNA polymerase
+group_0173,flagellar protein
+group_0174,efflux pump
+group_0175,membrane transporter
+group_0176,membrane transporter
+group_0177,efflux pump
+group_0178,virulence factor
+group_0179,efflux pump
+group_0180,DNA polymerase
+group_0181,hypothetical protein
+group_0182,hypothetical protein
+group_0183,hypothetical protein
+group_0184,beta-lactamase
+group_0185,efflux pump
+group_0186,membrane transporter
+group_0187,flagellar protein
+group_0188,DNA polymerase
+group_0189,hypothetical protein
+group_0190,efflux pump
+group_0191,flagellar protein
+group_0192,DNA polymerase
+group_0193,efflux pump
+group_0194,beta-lactamase
+group_0195,beta-lactamase
+group_0196,DNA polymerase
+group_0197,hypothetical protein
+group_0198,membrane transporter
+group_0199,beta-lactamase
+group_0200,hypothetical protein
+group_0201,flagellar protein
+group_0202,flagellar protein
+group_0203,beta-lactamase
+group_0204,flagellar protein
+group_0205,flagellar protein
+group_0206,flagellar protein
+group_0207,flagellar protein
+group_0208,DNA polymerase
+group_0209,hypothetical protein
+group_0210,hypothetical protein
+group_0211,DNA polymerase
+group_0212,membrane transporter
+group_0213,DNA polymerase
+group_0214,hypothetical protein
+group_0215,flagellar protein
+group_0216,virulence factor
+group_0217,beta-lactamase
+group_0218,hypothetical protein
+group_0219,flagellar protein
+group_0220,hypothetical protein
+group_0221,virulence factor
+group_0222,virulence factor
+group_0223,virulence factor
+group_0224,hypothetical protein
+group_0225,DNA polymerase
+group_0226,beta-lactamase
+group_0227,membrane transporter
+group_0228,virulence factor
+group_0229,membrane transporter
+group_0230,virulence factor
+group_0231,virulence factor
+group_0232,virulence factor
+group_0233,hypothetical protein
+group_0234,efflux pump
+group_0235,flagellar protein
+group_0236,DNA polymerase
+group_0237,efflux pump
+group_0238,hypothetical protein
+group_0239,flagellar protein
+group_0240,flagellar protein
+group_0241,virulence factor
+group_0242,efflux pump
+group_0243,beta-lactamase
+group_0244,efflux pump
+group_0245,DNA polymerase
+group_0246,hypothetical protein
+group_0247,beta-lactamase
+group_0248,hypothetical protein
+group_0249,DNA polymerase

@@ -46,9 +46,40 @@
         <input type="number" id="fMaxGenomes" min="0" step="1" placeholder="no cap">
         <div class="row"><label for="fMinAvgCopies">Min avg copies/genome</label></div>
         <input type="number" id="fMinAvgCopies" min="0" step="0.1" placeholder="no cap">
+        <div id="fTagsRow" style="display:none">
+          <div class="row"><label>Category tag</label></div>
+          <div id="fTagsContainer"></div>
+        </div>
         <button class="act" id="fUndo" disabled>Undo ⤺</button>
         <button class="act warn" id="fReset">Reset filters</button>
         <div class="hint">Applies live to the "Filtered groups" table below.</div>
+      </details>
+
+      <details class="sect" id="rowAnnotation">
+        <summary>Annotation</summary>
+        <div class="hint">Workflow A: one row per group. Workflow B: one row per gene (rolled up to a per-group consensus) — detected automatically from the file.</div>
+        <button class="act" id="loadAnnotationBtn">Upload annotation file…</button>
+        <div class="hint" id="annotationStatus">No annotation file loaded.</div>
+        <div id="annotationConsensusControls" style="display:none">
+          <div class="row"><label for="annMinCount">Min count for consensus</label></div>
+          <input type="number" id="annMinCount" min="1" step="1" value="1">
+          <div class="row"><label for="annMinPercent">Min % for consensus</label></div>
+          <input type="number" id="annMinPercent" min="0" max="100" step="1" value="50">
+          <button class="act" id="annReapply" style="width:auto">Re-apply with these thresholds</button>
+        </div>
+      </details>
+
+      <details class="sect" id="rowTags">
+        <summary>Category tags</summary>
+        <div class="row"><label for="tagName">Tag name</label></div>
+        <input type="text" id="tagName" placeholder="e.g. AMR">
+        <div class="row"><label for="tagKeywords">Keywords (comma-separated)</label></div>
+        <input type="text" id="tagKeywords" placeholder="e.g. beta-lactamase, efflux">
+        <button class="act" id="tagKeywordBtn" style="width:auto">Tag matching groups</button>
+        <div class="hint">Or upload a two-column file (group ID, category):</div>
+        <button class="act" id="loadTagListBtn">Upload tag list…</button>
+        <div class="hint" id="tagListStatus"></div>
+        <div id="tagSummary"></div>
       </details>
     </aside>
     <div id="sideResize" title="Drag to resize the panel · double-click to reset"></div>
@@ -83,6 +114,8 @@
   </footer>
 </div>
 <input type="file" id="fileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
+<input type="file" id="annotationFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
+<input type="file" id="tagListFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <script type="module" src="src/app.js"></script>
 </body>
 </html>
