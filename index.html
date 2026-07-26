@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clann Pangenome Explorer</title>
+<meta name="description" content="Free, browser-based pangenome explorer for Roary, Panaroo, PIRATE, and PanACoTA output, joined with CoinFinder co-occurrence results. Nothing is uploaded; everything runs in your browser.">
+<!-- TODO (build brief Phase 8): full Open Graph/Twitter/JSON-LD meta block, og-image, canonical URL, matching clann-blast-explorer/index.html -->
+<link rel="stylesheet" href="styles/pangenome.css">
+</head>
+<body>
+<div id="app" style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <header>
+    <span class="brand" id="brand">Clann Pangenome Explorer</span>
+    <span class="title" id="hTitle"></span>
+    <span class="meta" id="hMeta"></span>
+    <span class="spacer"></span>
+    <button id="uploadBtn" title="Open a pangenome matrix file">Open file…</button>
+    <button class="act" style="width:auto" id="themeBtn" title="Toggle light/dark">◐</button>
+  </header>
+  <main>
+    <aside id="side">
+      <h4>Dataset</h4>
+      <div class="hint" id="datasetMeta">No file loaded yet.</div>
+      <div class="hint">Filtering, tagging, and CoinFinder integration land in later phases (see the build brief).</div>
+    </aside>
+    <div id="sideResize" title="Drag to resize the panel · double-click to reset"></div>
+    <div id="wrap">
+      <div id="explorer" style="display:none"></div>
+      <div id="columnMapping" style="display:none"></div>
+      <div id="drop">Drop a pangenome matrix file to explore</div>
+      <div id="empty">
+        <div class="hero">
+          <h1>Clann Pangenome Explorer</h1>
+          <div class="lead">A free, browser-based explorer for pangenome output. Open a Roary/Panaroo <code>gene_presence_absence.csv</code>, a PIRATE <code>PIRATE.gene_families.tsv</code>, a PanACoTA matrix, or any similar CSV/TSV — drag one in, or paste it — then browse the pangenome summary. Everything runs locally; nothing is uploaded to a server.</div>
+          <div class="exts">Roary · Panaroo · PIRATE · PanACoTA · generic CSV/TSV · .gz · .zip</div>
+          <button id="emptyOpen">Open file…</button>
+        </div>
+      </div>
+      <div class="err" id="err"></div>
+    </div>
+  </main>
+  <footer id="foot">
+    <span class="foot-l">
+      <strong>Clann Pangenome Explorer</strong><span class="sep">·</span>developed by
+      <a href="https://www.creeveylab.org/" target="_blank" rel="noopener">CreeveyLab</a>
+    </span>
+    <span class="foot-r">
+      <a href="https://github.com/ChrisCreevey/clann-pangenome-explorer/issues/new/choose" target="_blank" rel="noopener" title="Suggest a feature or report a problem (opens GitHub — a free account is needed to post)">Feedback</a>
+      <a href="https://github.com/ChrisCreevey/clann-pangenome-explorer" target="_blank" rel="noopener" title="Source code on GitHub">GitHub</a>
+      <a class="like" id="likeBtn" href="https://github.com/ChrisCreevey/clann-pangenome-explorer" target="_blank" rel="noopener"
+         title="Like it? Star the repository on GitHub (opens GitHub — a free account is needed to star)">
+        <span class="like-ico">★</span> Like it?<span class="like-count" id="starCount" hidden></span>
+      </a>
+    </span>
+  </footer>
+</div>
+<input type="file" id="fileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
