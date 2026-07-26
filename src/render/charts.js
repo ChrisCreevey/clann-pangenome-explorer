@@ -172,3 +172,60 @@ export function renderGenomeBarChart(container, genomes) {
     .join(" &nbsp; ");
   container.appendChild(legend);
 }
+
+/**
+ * Render the pangenome/core-genome accumulation curves (build brief §6,
+ * Phase 3) from computeAccumulationCurves()'s output: two lines (pangenome
+ * size, core size) against genome count, each with a shaded +/-1 std-dev band.
+ */
+export function renderAccumulationCurves(container, curves) {
+  if (!curves.genomeCounts.length) return emptyNote(container, "No data for accumulation curves.");
+
+  const width = 620, height = 260, pad = 40;
+  const n = curves.genomeCounts.length;
+  const maxY = Math.max(...curves.pangenomeMean.map((v, i) => v + curves.pangenomeStd[i]), 1);
+  const sx = (i) => pad + (i / Math.max(1, n - 1)) * (width - 2 * pad);
+  const sy = (v) => height - pad - (v / maxY) * (height - 2 * pad);
+
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart-svg" });
+  svg.appendChild(el("line", { class: "axis", x1: pad, x2: width - pad, y1: height - pad, y2: height - pad }));
+  svg.appendChild(el("line", { class: "axis", x1: pad, x2: pad, y1: pad, y2: height - pad }));
+
+  function bandPath(mean, std) {
+    const top = mean.map((v, i) => `${sx(i)},${sy(v + std[i])}`);
+    const bottom = mean.map((v, i) => `${sx(i)},${sy(v - std[i])}`).reverse();
+    return `M${[...top, ...bottom].join("L")}Z`;
+  }
+  function linePath(mean) {
+    return `M${mean.map((v, i) => `${sx(i)},${sy(v)}`).join("L")}`;
+  }
+
+  const panBand = el("path", { d: bandPath(curves.pangenomeMean, curves.pangenomeStd), class: "accum-band", style: "fill:var(--accent);opacity:.15" });
+  svg.appendChild(panBand);
+  const coreBand = el("path", { d: bandPath(curves.coreMean, curves.coreStd), class: "accum-band", style: "fill:var(--moss-500);opacity:.15" });
+  svg.appendChild(coreBand);
+
+  svg.appendChild(el("path", { d: linePath(curves.pangenomeMean), class: "accum-line", style: "fill:none;stroke:var(--accent);stroke-width:2" }));
+  svg.appendChild(el("path", { d: linePath(curves.coreMean), class: "accum-line", style: "fill:none;stroke:var(--moss-500);stroke-width:2" }));
+
+  const xLabel = el("text", { x: width / 2, y: height - 6, "text-anchor": "middle" });
+  xLabel.textContent = "Genomes sampled →";
+  svg.appendChild(xLabel);
+  const y0 = el("text", { x: pad - 6, y: height - pad + 4, "text-anchor": "end" });
+  y0.textContent = "0";
+  svg.appendChild(y0);
+  const yMaxLabel = el("text", { x: pad - 6, y: pad + 4, "text-anchor": "end" });
+  yMaxLabel.textContent = String(Math.round(maxY));
+  svg.appendChild(yMaxLabel);
+
+  container.innerHTML = "";
+  container.appendChild(svg);
+
+  const legend = document.createElement("div");
+  legend.className = "chart-legend";
+  legend.innerHTML =
+    `<span class="sw" style="background:var(--accent)"></span>Pangenome size &nbsp; ` +
+    `<span class="sw" style="background:var(--moss-500)"></span>Core genome size` +
+    (curves.approximate ? ` <span style="opacity:.75">— approximate (${curves.permutations} permutations, capped for this genome count)</span>` : ` (${curves.permutations} permutations)`);
+  container.appendChild(legend);
+}

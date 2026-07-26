@@ -180,6 +180,9 @@ table.data-table td a:hover{text-decoration:underline}
 .scatter-pt{fill:var(--accent);opacity:.7}
 .chart-legend{margin-top:6px;font-size:11px;color:var(--muted)}
 .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.heatmap-wrap{overflow:hidden;border:1px solid var(--line);border-radius:6px}
+.heatmap-canvas{display:block;width:100%;cursor:grab;touch-action:none}
+.heatmap-canvas:active{cursor:grabbing}
 .donut-svg{display:block;margin:0 auto}
 .donut-svg .donut-total{font-size:26px;fill:var(--ink);font-family:var(--font-sans);font-weight:700}
 .donut-svg .donut-sub{font-size:11px;fill:var(--muted)}

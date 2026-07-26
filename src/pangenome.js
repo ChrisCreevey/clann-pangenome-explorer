@@ -5,7 +5,9 @@
 // CoinFinder pair/network views as additional cards or mode tabs here.
 
 import { frequencyClassCounts, frequencySpectrum } from "./analysis/frequency.js";
-import { renderFrequencyDonut, renderFrequencySpectrum, renderGenomeBarChart } from "./render/charts.js";
+import { computeAccumulationCurves } from "./analysis/accumulation.js";
+import { renderFrequencyDonut, renderFrequencySpectrum, renderGenomeBarChart, renderAccumulationCurves } from "./render/charts.js";
+import { renderHeatmap } from "./render/heatmap.js";
 
 const FREQ_CLASS_LABELS = { core: "Core", softcore: "Soft-core", shell: "Shell", cloud: "Cloud" };
 
@@ -64,6 +66,18 @@ export function mountExplorer(container, data) {
   genomeCard.appendChild(genomeDiv);
   renderGenomeBarChart(genomeDiv, data.genomes);
   panel.appendChild(genomeCard);
+
+  const accumCard = card("Pangenome and core-genome accumulation");
+  const accumDiv = document.createElement("div");
+  accumCard.appendChild(accumDiv);
+  renderAccumulationCurves(accumDiv, computeAccumulationCurves(data));
+  panel.appendChild(accumCard);
+
+  const heatmapCard = card("Presence/absence heatmap");
+  const heatmapDiv = document.createElement("div");
+  heatmapCard.appendChild(heatmapDiv);
+  panel.appendChild(heatmapCard); // must be in the document before renderHeatmap wires up its controls via getElementById
+  renderHeatmap(heatmapDiv, data);
 
   return {
     setData(newData) {
