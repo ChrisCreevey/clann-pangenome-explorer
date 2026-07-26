@@ -229,3 +229,45 @@ export function renderAccumulationCurves(container, curves) {
     (curves.approximate ? ` <span style="opacity:.75">— approximate (${curves.permutations} permutations, capped for this genome count)</span>` : ` (${curves.permutations} permutations)`);
   container.appendChild(legend);
 }
+
+/**
+ * Category-by-category association/disassociation summary (build brief
+ * §6 Phase 6): one row per unordered category combination (from
+ * categoryMatrix()), with a count and an inline proportional bar for
+ * associated vs. disassociated pairs — answers "do AMR and virulence
+ * genes tend to co-occur" directly.
+ */
+export function renderCategoryMatrix(container, combos) {
+  if (!combos.length) return emptyNote(container, "No resolved pairs to summarise — load CoinFinder association/disassociation files first.");
+
+  const maxTotal = Math.max(...combos.map((c) => c.associated + c.disassociated));
+  const table = document.createElement("table");
+  table.className = "data-table";
+  table.innerHTML = "<thead><tr><th>Category combination</th><th>Associated</th><th>Disassociated</th><th></th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  for (const combo of combos) {
+    const tr = document.createElement("tr");
+    const total = combo.associated + combo.disassociated;
+    const assocW = total ? (combo.associated / maxTotal) * 100 : 0;
+    const disassocW = total ? (combo.disassociated / maxTotal) * 100 : 0;
+    tr.innerHTML = `
+      <td>${combo.key}</td>
+      <td class="num">${combo.associated}</td>
+      <td class="num">${combo.disassociated}</td>
+      <td style="min-width:140px">
+        <div style="display:flex;height:10px;gap:1px">
+          <div style="width:${assocW}%;background:var(--compute-500)"></div>
+          <div style="width:${disassocW}%;background:var(--clay-500)"></div>
+        </div>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  container.innerHTML = "";
+  container.appendChild(table);
+  const legend = document.createElement("div");
+  legend.className = "chart-legend";
+  legend.innerHTML = `<span class="sw" style="background:var(--compute-500)"></span>Associated &nbsp; <span class="sw" style="background:var(--clay-500)"></span>Disassociated`;
+  container.appendChild(legend);
+}

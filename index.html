@@ -81,6 +81,14 @@
         <div class="hint" id="tagListStatus"></div>
         <div id="tagSummary"></div>
       </details>
+
+      <details class="sect" id="rowCoinfinder">
+        <summary>CoinFinder pairs</summary>
+        <button class="act" id="loadAssociatedBtn">Upload associated pairs…</button>
+        <div class="hint" id="associatedStatus">No associated-pairs file loaded.</div>
+        <button class="act" id="loadDisassociatedBtn">Upload disassociated pairs…</button>
+        <div class="hint" id="disassociatedStatus">No disassociated-pairs file loaded.</div>
+      </details>
     </aside>
     <div id="sideResize" title="Drag to resize the panel · double-click to reset"></div>
     <div id="wrap">
@@ -116,6 +124,8 @@
 <input type="file" id="fileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <input type="file" id="annotationFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <input type="file" id="tagListFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
+<input type="file" id="associatedFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
+<input type="file" id="disassociatedFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <script type="module" src="src/app.js"></script>
 </body>
 </html>

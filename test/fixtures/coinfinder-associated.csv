@@ -1,0 +1,4 @@
+Gene_1,Gene_2,p_value
+groupA,groupD,0.001
+groupB,groupC,0.02
+groupA,ghostGroup,0.03

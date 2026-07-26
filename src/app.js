@@ -11,6 +11,8 @@ import { renderColumnMapping } from "./render/column-mapping.js";
 import { decompressIfNeeded } from "./parse/compressed.js";
 import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB } from "./parse/annotation.js";
 import { keywordTag, listUploadTag } from "./analysis/tags.js";
+import { parseCoinfinderFile } from "./parse/coinfinder.js";
+import { resolvePairs } from "./analysis/pairs.js";
 
 const explorerEl = document.getElementById("explorer");
 const columnMappingEl = document.getElementById("columnMapping");
@@ -47,6 +49,8 @@ function loadData(data, name) {
   document.getElementById("annotationStatus").textContent = "No annotation file loaded.";
   document.getElementById("annotationConsensusControls").style.display = "none";
   document.getElementById("tagListStatus").textContent = "";
+  document.getElementById("associatedStatus").textContent = "No associated-pairs file loaded.";
+  document.getElementById("disassociatedStatus").textContent = "No disassociated-pairs file loaded.";
   if (handle) handle = handle.setData(data);
   else handle = mountExplorer(explorerEl, data);
 }
@@ -256,6 +260,36 @@ tagListFileInput.addEventListener("change", async (e) => {
     showError(`Couldn't parse ${name} as a tag list: ${err && err.message ? err.message : err}`);
   }
 });
+
+// --- CoinFinder pair uploads (associated / disassociated) ---
+// TODO: route parseCoinfinderFile's ColumnMappingNeeded through an
+// interactive remap UI (like renderColumnMapping) instead of just
+// reporting the error — best-guess detection covers the common case
+// (named ID/significance columns, or IDs matching loaded groups) but a
+// truly unrecognisable file currently has no manual-correction path yet.
+function wireCoinfinderUpload(inputId, btnId, statusId, direction) {
+  const input = document.getElementById(inputId);
+  const status = document.getElementById(statusId);
+  document.getElementById(btnId).addEventListener("click", () => input.click());
+  input.addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    input.value = "";
+    if (!f || !currentData) return;
+    let text, name;
+    try { ({ text, filename: name } = await readTextFile(f)); }
+    catch (err) { showError(`Couldn't read ${f.name}: ${err && err.message ? err.message : err}`); return; }
+    try {
+      const rows = parseCoinfinderFile(text, currentData);
+      const { matched, unmatched } = resolvePairs(currentData, rows, direction);
+      status.textContent = `${name}: ${matched} pair(s) resolved` + (unmatched ? `, ${unmatched} unmatched.` : ".");
+      refreshExplorer();
+    } catch (err) {
+      showError(`Couldn't parse ${name} as a CoinFinder ${direction} pairs file: ${err && err.message ? err.message : err}`);
+    }
+  });
+}
+wireCoinfinderUpload("associatedFileInput", "loadAssociatedBtn", "associatedStatus", "associated");
+wireCoinfinderUpload("disassociatedFileInput", "loadDisassociatedBtn", "disassociatedStatus", "disassociated");
 
 // --- footer: show the repo's live star count next to the "Like it?" button ---
 fetch("https://api.github.com/repos/ChrisCreevey/clann-pangenome-explorer")
