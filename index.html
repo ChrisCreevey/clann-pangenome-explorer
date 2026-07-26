@@ -3,9 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Clann Pangenome Explorer</title>
-<meta name="description" content="Free, browser-based pangenome explorer for Roary, Panaroo, PIRATE, and PanACoTA output, joined with CoinFinder co-occurrence results. Nothing is uploaded; everything runs in your browser.">
-<!-- TODO (build brief Phase 8): full Open Graph/Twitter/JSON-LD meta block, og-image, canonical URL, matching clann-blast-explorer/index.html -->
+<title>Clann Pangenome Explorer — free online pangenome and CoinFinder viewer</title>
+<meta name="description" content="Free, browser-based pangenome explorer for Roary, Panaroo, PIRATE, and PanACoTA output. Join a pangenome matrix with gene annotations and CoinFinder co-occurrence results to summarise, filter, tag by category, and visualise which genes tend to associate or exclude one another. Nothing is uploaded; everything runs in your browser.">
+<meta name="keywords" content="pangenome viewer, Roary, Panaroo, PIRATE, PanACoTA, gene presence absence, CoinFinder, gene co-occurrence, core genome, accessory genome, pangenome heatmap, AMR genes, virulence genes, bioinformatics, online pangenome explorer">
+<meta name="author" content="CreeveyLab">
+<link rel="canonical" href="https://chriscreevey.github.io/clann-pangenome-explorer/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Clann Pangenome Explorer">
+<meta property="og:title" content="Clann Pangenome Explorer — online pangenome and CoinFinder viewer">
+<meta property="og:description" content="Load a Roary/Panaroo/PIRATE/PanACoTA pangenome matrix, join it with annotations and CoinFinder co-occurrence results, and explore it in your browser. Nothing leaves your machine.">
+<meta property="og:url" content="https://chriscreevey.github.io/clann-pangenome-explorer/">
+<meta property="og:image" content="https://chriscreevey.github.io/clann-pangenome-explorer/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Clann Pangenome Explorer — pangenome and CoinFinder explorer">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Clann Pangenome Explorer — online pangenome and CoinFinder viewer">
+<meta name="twitter:description" content="Load pangenome output in your browser — summarise, filter, tag by category, and visualise gene co-occurrence from CoinFinder. Nothing leaves your machine.">
+<meta name="twitter:image" content="https://chriscreevey.github.io/clann-pangenome-explorer/og-image.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Clann Pangenome Explorer",
+  "url": "https://chriscreevey.github.io/clann-pangenome-explorer/",
+  "applicationCategory": "BioinformaticsApplication",
+  "operatingSystem": "Any (modern web browser)",
+  "browserRequirements": "Requires JavaScript",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "Free browser-based pangenome explorer. Join a Roary/Panaroo/PIRATE/PanACoTA pangenome matrix with gene annotations and CoinFinder co-occurrence results, then summarise, filter, tag by category, and visualise the combined picture.",
+  "keywords": "pangenome viewer, Roary, Panaroo, PIRATE, PanACoTA, CoinFinder, gene co-occurrence, core genome, accessory genome",
+  "author": { "@type": "Organization", "name": "CreeveyLab", "url": "https://www.creeveylab.org/" },
+  "codeRepository": "https://github.com/ChrisCreevey/clann-pangenome-explorer"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "How do I view a pangenome matrix online?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Open Clann Pangenome Explorer, then click Open file or drag your Roary/Panaroo gene_presence_absence.csv, PIRATE.gene_families.tsv, or PanACoTA matrix onto the window. You can also paste tabular text straight in. The pangenome summary renders instantly and stays on your machine." } },
+    { "@type": "Question", "name": "Which pangenome tools are supported?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Roary, Panaroo (Roary-compatible gene_presence_absence.csv), PIRATE (PIRATE.gene_families.tsv), and PanACoTA matrices are auto-detected. Any other CSV/TSV pangenome matrix falls back to a generic importer with a manual column-mapping step." } },
+    { "@type": "Question", "name": "Can I upload a gzipped or zipped file?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. .gz and .zip files are decompressed in your browser before parsing — nothing is uploaded, even temporarily." } },
+    { "@type": "Question", "name": "What's the difference between the two annotation workflows?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Workflow A is one annotation row per gene group, joined directly. Workflow B is one row per gene across every genome, rolled up to a per-group consensus (majority annotation) with a consistency score and a full disagreement breakdown you can browse. Both are detected automatically from the file you upload." } },
+    { "@type": "Question", "name": "How does category tagging work?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Tag groups by typing keywords to match against annotation text (e.g. beta-lactamase, efflux for an ad hoc AMR tag), or upload a two-column group-ID/category file from a dedicated tool like CARD/RGI or a VFDB search. A group can carry more than one tag." } },
+    { "@type": "Question", "name": "Can it integrate CoinFinder co-occurrence results?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Upload CoinFinder's associated- and disassociated-pairs files and they're matched against your loaded groups, with unmatched pairs reported rather than dropped. A pair table, a category-by-category association matrix, and a pannable/zoomable network graph let you explore whether tagged categories like AMR and virulence tend to co-occur." } },
+    { "@type": "Question", "name": "Is my data uploaded to a server?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Everything runs client-side in your browser, so your pangenome data never leaves your computer." } },
+    { "@type": "Question", "name": "Can I filter and export a subset of groups?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Filter by frequency class, presence/sequence counts, average copies per genome, annotation text, or category tag, with live Undo/Reset. Export constituent gene IDs or the filtered table as CSV, ready for sequence extraction or a report." } },
+    { "@type": "Question", "name": "Does it run Roary, Panaroo, PIRATE, PanACoTA, or CoinFinder for me?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. It only explores existing pangenome and CoinFinder output — it does not run any pipeline, does not run BLAST, and does not build alignments or trees itself. It stages sequence IDs and gene lists for Clann BLAST Explorer and Clann Tree Viewer instead." } },
+    { "@type": "Question", "name": "Is Clann Pangenome Explorer free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes, it is free and open source, developed by CreeveyLab as a companion to Clann Tree Viewer and Clann BLAST Explorer." } }
+  ]
+}
+</script>
 <link rel="stylesheet" href="styles/pangenome.css">
 </head>
 <body>
@@ -101,7 +160,67 @@
           <div class="lead">A free, browser-based explorer for pangenome output. Open a Roary/Panaroo <code>gene_presence_absence.csv</code>, a PIRATE <code>PIRATE.gene_families.tsv</code>, a PanACoTA matrix, or any similar CSV/TSV — drag one in, or paste it — then browse the pangenome summary. Everything runs locally; nothing is uploaded to a server.</div>
           <div class="exts">Roary · Panaroo · PIRATE · PanACoTA · generic CSV/TSV · .gz · .zip</div>
           <button id="emptyOpen">Open file…</button>
+          <div class="scroll-hint">↓ About &amp; FAQ</div>
         </div>
+        <section class="about">
+          <h2>About Clann Pangenome Explorer</h2>
+          <p><strong>Clann Pangenome Explorer</strong> is a free, open-source tool for exploring pangenome output — from <strong>Roary</strong>, <strong>Panaroo</strong>, <strong>PIRATE</strong>, or <strong>PanACoTA</strong> — entirely in your web browser. Its job is integration: a typical project produces a pangenome matrix, one or two annotation tables, and a pair of <strong>CoinFinder</strong> co-occurrence files, each useful on its own but most informative once joined by gene-group ID. Load your matrix to see frequency classes, the gene frequency spectrum, a presence/absence heatmap, and accumulation curves; join annotations (either one row per group, or one row per gene rolled up to a per-group consensus); tag groups into categories like AMR or virulence; then load CoinFinder's associated/disassociated pairs to see whether those categories tend to co-occur or exclude one another, including associations you weren't specifically looking for.</p>
+          <p>Because all parsing and rendering happen locally in your browser, your pangenome data is never uploaded to a server.</p>
+
+          <h2>Using the explorer</h2>
+
+          <h3>Loading data</h3>
+          <p>Click "Open file…", drag a file onto the window, or paste tabular text directly. Roary/Panaroo's <code>gene_presence_absence.csv</code>, PIRATE's <code>PIRATE.gene_families.tsv</code>, and PanACoTA matrices are auto-detected from filename and column shape; anything else falls back to a generic CSV/TSV importer with a manual column-mapping step — a preview of your first few rows with a group-ID column and genome columns to confirm or correct, rather than the order being assumed silently. <code>.gz</code>/<code>.zip</code> compressed files are decompressed in your browser first.</p>
+
+          <h3>Pangenome summary</h3>
+          <p>Frequency-class counts (core/soft-core/shell/cloud, with adjustable thresholds), the gene frequency spectrum histogram, a per-genome gene-count bar chart for spotting an outlier genome, pangenome/core-genome accumulation curves built from random subsampling, and a zoomable, sortable presence/absence heatmap — all update together and export as PNG/SVG.</p>
+
+          <h3>Filtering and top-hit workflows</h3>
+          <p>Filter groups by frequency class, presence/sequence counts, average copies per genome, annotation text, or category tag, with live Undo/Reset. Pattern-match against a defined genome subset, compare two genome sets by presence difference (a plain contingency table and odds ratio, labelled descriptive rather than a formal test), and surface singleton and multi-copy groups directly.</p>
+
+          <h3>Annotation and category tags</h3>
+          <p>Upload an annotation file keyed either to one row per gene group (joined directly) or one row per gene across every genome — rolled up to a per-group consensus with a consistency score, and the full disagreement breakdown left visible rather than hidden behind the consensus label. Tag groups by keyword match against annotation text, or upload a two-column group-ID/category file from a dedicated tool like CARD/RGI or a VFDB search. A group can carry more than one tag.</p>
+
+          <h3>CoinFinder integration</h3>
+          <p>Upload CoinFinder's associated- and disassociated-pairs files and they're resolved against your loaded groups; pairs that fail to match are reported, not dropped. Explore the joined picture in a sortable pair table, a category-by-category association/disassociation matrix, and a pannable, zoomable network graph — with one-click views for pairs that cross a category boundary, and for sorting purely by significance regardless of category, so an association you weren't specifically looking for is just as visible as the one you were.</p>
+
+          <h3>Staging data for downstream work</h3>
+          <p>A per-group detail card shows annotation, consistency score, tags, frequency class, counts, and a collapsible per-genome gene ID list. Export constituent gene IDs for a selected group or filtered set, the multi-copy/gene-family candidate list, or a filtered pair table as CSV/TSV — ready to extract sequences and explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>, or to align and build a tree in <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a>.</p>
+
+          <h2>Frequently asked questions</h2>
+
+          <h3>How do I view a pangenome matrix online?</h3>
+          <p>Open Clann Pangenome Explorer, then click "Open file…" or drag your Roary/Panaroo <code>gene_presence_absence.csv</code>, PIRATE <code>PIRATE.gene_families.tsv</code>, or PanACoTA matrix onto the window. You can also paste tabular text straight in. The pangenome summary renders instantly and stays on your machine.</p>
+
+          <h3>Which pangenome tools are supported?</h3>
+          <p>Roary, Panaroo (Roary-compatible <code>gene_presence_absence.csv</code>), PIRATE (<code>PIRATE.gene_families.tsv</code>), and PanACoTA matrices are auto-detected. Any other CSV/TSV pangenome matrix falls back to a generic importer with a manual column-mapping step.</p>
+
+          <h3>Can I upload a gzipped or zipped file?</h3>
+          <p>Yes — <code>.gz</code> and <code>.zip</code> files are decompressed in your browser before parsing, so you don't need to extract them yourself first. Nothing is uploaded, even temporarily.</p>
+
+          <h3>What's the difference between the two annotation workflows?</h3>
+          <p>Workflow A is one annotation row per gene group, joined directly. Workflow B is one row per gene across every genome, rolled up to a per-group consensus (majority annotation) with a consistency score and a full disagreement breakdown you can browse. Both are detected automatically from the file you upload, and the consensus acceptance threshold (minimum count and percentage) is adjustable.</p>
+
+          <h3>How does category tagging work?</h3>
+          <p>Tag groups by typing keyword(s) to match against annotation text (e.g. <code>beta-lactamase</code>, <code>efflux</code> for an ad hoc AMR tag), or upload a two-column group-ID/category file from a dedicated tool like CARD/RGI or a VFDB search. Tags are flat labels — a group can carry more than one — and feed the filters, the category-by-category matrix, and the network graph automatically.</p>
+
+          <h3>Can it integrate CoinFinder co-occurrence results?</h3>
+          <p>Yes. Upload CoinFinder's associated- and disassociated-pairs files and they're matched against your loaded groups, with unmatched pairs (a naming mismatch between CoinFinder's input and this file) reported clearly rather than silently dropped. A pair table, a category-by-category association matrix, and a pannable/zoomable network graph let you explore whether tagged categories like AMR and virulence tend to co-occur — plus one-click cross-category and pure-significance views for spotting an association you weren't specifically looking for.</p>
+
+          <h3>Is my data uploaded to a server?</h3>
+          <p>No. Everything runs client-side in your browser, so your pangenome data never leaves your computer.</p>
+
+          <h3>Can I filter and export a subset of groups?</h3>
+          <p>Yes, in the Filters panel: frequency class, presence/sequence counts, average copies per genome, annotation text, and category tag, all applying live with Undo and Reset. Export constituent gene IDs or the filtered table as CSV from the Filtered groups card, the multi-copy/gene-family candidate list, or a filtered CoinFinder pair table as CSV/TSV — all ready for a report or for downstream sequence extraction.</p>
+
+          <h3>Does it run Roary, Panaroo, PIRATE, PanACoTA, or CoinFinder for me?</h3>
+          <p>No. It only explores existing pangenome and CoinFinder output — it does not run any pipeline, does not run BLAST or DIAMOND, and does not build alignments or trees itself. It stages sequence IDs and gene lists for <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a> and <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a> instead.</p>
+
+          <h3>Is it free?</h3>
+          <p>Yes — Clann Pangenome Explorer is free and open source, developed by <a href="https://www.creeveylab.org/" target="_blank" rel="noopener">CreeveyLab</a>. Use it online or clone the <a href="https://github.com/ChrisCreevey/clann-pangenome-explorer" target="_blank" rel="noopener">repository</a> and host it yourself.</p>
+
+          <p class="about-foot">Developed by <a href="https://www.creeveylab.org/" target="_blank" rel="noopener">CreeveyLab</a> · <a href="https://github.com/ChrisCreevey/clann-pangenome-explorer" target="_blank" rel="noopener">source on GitHub</a> · companion to <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a> and <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a>.</p>
+        </section>
       </div>
       <div class="err" id="err"></div>
       <div id="groupDetailOverlay" class="detail-overlay" style="display:none">

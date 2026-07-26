@@ -8,7 +8,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the full design brief and [`clann-pangenome-exp
 
 ## Status
 
-**Phase 1 in progress** (parsers and common data model): Roary/Panaroo, PIRATE, and PanACoTA pangenome matrix parsers, a generic CSV/TSV fallback with column-mapping detection, and frequency-class assignment are implemented and tested. No UI yet — see the build brief's phase list for what's next.
+All 8 build phases are complete: pangenome parsers (Roary/Panaroo, PIRATE, PanACoTA, generic CSV/TSV fallback), the pangenome summary (frequency classes, frequency spectrum, per-genome counts), a zoomable presence/absence heatmap and accumulation curves, filtering/top-hit workflows, annotation mapping and category tagging, CoinFinder pair/network integration, export and staging, and site chrome (meta tags, About & FAQ, sitemap/robots.txt). See [`clann-pangenome-explorer-BUILD-BRIEF.md`](clann-pangenome-explorer-BUILD-BRIEF.md) for the phase-by-phase detail and the resolved open points.
 
 ## Development
 

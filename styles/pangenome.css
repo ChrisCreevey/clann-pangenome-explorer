@@ -185,7 +185,7 @@ table.data-table td a:hover{text-decoration:underline}
 .network-svg{width:100%;height:auto;display:block;cursor:grab;touch-action:none;background:var(--bg)}
 .network-svg:active{cursor:grabbing}
 
-.detail-overlay{position:absolute;inset:0;background:color-mix(in srgb, black 45%, transparent);
+.detail-overlay{position:fixed;inset:0;background:color-mix(in srgb, black 45%, transparent);
   z-index:30;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 20px}
 .detail-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-md);
   padding:18px 22px;max-width:640px;width:100%}
