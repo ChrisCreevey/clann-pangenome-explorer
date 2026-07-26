@@ -1,0 +1,3 @@
+allele_name	gene_family	consensus_gene_name	product	threshold%	G1	G2	G3
+a1	famX	ampC	beta-lactamase	90	famX_1	famX_2	famX_3
+a2	famY		hypothetical protein	90	famY_1		famY_3

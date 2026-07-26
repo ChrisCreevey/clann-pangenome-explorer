@@ -1,0 +1,5 @@
+Gene,Non-unique Gene name,Annotation,No. isolates,No. sequences,Avg sequences per isolate,Genome fragment,Order within fragment,Accessory Fragment,Accessory Order with fragment,QC,Min group size nuc,Max group size nuc,Avg group size nuc,G1,G2,G3
+groupA,groupA,beta-lactamase,3,3,1.0,,,,,,,,,groupA_1,groupA_2,groupA_3
+groupB,groupB,hypothetical protein,2,2,1.0,,,,,,,,,groupB_1,groupB_2,
+groupC,groupC,,1,1,1.0,,,,,,,,,,,groupC_1
+groupD,groupD,transporter,3,4,1.33,,,,,,,,,"groupD_1;groupD_1b",groupD_2,groupD_3
