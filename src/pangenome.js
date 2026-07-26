@@ -8,6 +8,7 @@ import { frequencyClassCounts, frequencySpectrum } from "./analysis/frequency.js
 import { computeAccumulationCurves } from "./analysis/accumulation.js";
 import { renderFrequencyDonut, renderFrequencySpectrum, renderGenomeBarChart, renderAccumulationCurves } from "./render/charts.js";
 import { renderHeatmap } from "./render/heatmap.js";
+import { mountTopFilterCards } from "./render/topfilter-ui.js";
 
 const FREQ_CLASS_LABELS = { core: "Core", softcore: "Soft-core", shell: "Shell", cloud: "Cloud" };
 
@@ -78,6 +79,8 @@ export function mountExplorer(container, data) {
   heatmapCard.appendChild(heatmapDiv);
   panel.appendChild(heatmapCard); // must be in the document before renderHeatmap wires up its controls via getElementById
   renderHeatmap(heatmapDiv, data);
+
+  mountTopFilterCards(panel, data);
 
   return {
     setData(newData) {

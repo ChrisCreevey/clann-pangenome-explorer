@@ -1,0 +1,81 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import { parse } from "../src/parse/index.js";
+import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../src/analysis/topfilter.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const fixture = (name) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
+const loadRoary = () => parse(fixture("roary-small.csv"), { filename: "gene_presence_absence.csv" });
+
+test("filterGroups: freqClasses restricts to matching classes", () => {
+  const data = loadRoary();
+  const core = filterGroups(data, { freqClasses: ["core"] });
+  assert.deepEqual(core.map((g) => g.groupId).sort(), ["groupA", "groupD"]);
+});
+
+test("filterGroups: annotation text is a case-insensitive substring match", () => {
+  const data = loadRoary();
+  const hits = filterGroups(data, { annotationText: "LACTAMASE" });
+  assert.deepEqual(hits.map((g) => g.groupId), ["groupA"]);
+});
+
+test("filterGroups: count and avg-copies bounds combine (AND)", () => {
+  const data = loadRoary();
+  const hits = filterGroups(data, { minGenomesPresentIn: 3, minAvgCopiesPerGenome: 1.1 });
+  assert.deepEqual(hits.map((g) => g.groupId), ["groupD"]);
+});
+
+test("patternMatch: present-in and absent-from both apply", () => {
+  const data = loadRoary();
+  // groupB is present in G1/G2, absent from G3
+  const hits = patternMatch(data, { presentIn: ["G1", "G2"], absentFrom: ["G3"] });
+  assert.deepEqual(hits.map((g) => g.groupId), ["groupB"]);
+});
+
+test("patternMatch: empty criteria matches every group", () => {
+  const data = loadRoary();
+  assert.equal(patternMatch(data, {}).length, data.meta.groupCount);
+});
+
+test("twoGroupComparison: odds ratio and percentages for a clean split", () => {
+  const data = loadRoary();
+  // groupB present in G1,G2 (not G3): set A = [G1,G2], set B = [G3]
+  const rows = twoGroupComparison(data, ["G1", "G2"], ["G3"]);
+  const groupB = rows.find((r) => r.groupId === "groupB");
+  assert.equal(groupB.presentA, 2);
+  assert.equal(groupB.presentB, 0);
+  assert.equal(groupB.pctA, 100);
+  assert.equal(groupB.pctB, 0);
+  assert.equal(groupB.correctedForZeroCell, true);
+  assert.ok(groupB.oddsRatio > 1); // over-represented in A
+
+  // results are sorted by |pctA - pctB| descending
+  for (let i = 1; i < rows.length; i++) {
+    const prevDiff = Math.abs(rows[i - 1].pctA - rows[i - 1].pctB);
+    const curDiff = Math.abs(rows[i].pctA - rows[i].pctB);
+    assert.ok(prevDiff >= curDiff - 1e-9);
+  }
+});
+
+test("singletonsPerGenome: groupC (unique to G3) is attributed to G3 only", () => {
+  const data = loadRoary();
+  const byGenome = singletonsPerGenome(data);
+  assert.deepEqual(byGenome.get("G1").map((g) => g.groupId), []);
+  assert.deepEqual(byGenome.get("G3").map((g) => g.groupId), ["groupC"]);
+});
+
+test("multiCopyCandidates: groupD (avg 1.33 copies) passes a 1.2 threshold, others don't", () => {
+  const data = loadRoary();
+  const hits = multiCopyCandidates(data, 1.2);
+  assert.deepEqual(hits.map((g) => g.groupId), ["groupD"]);
+});
+
+test("multiCopyCandidates: default threshold (1.5) excludes groupD (avg ~1.33)", () => {
+  const data = loadRoary();
+  const hits = multiCopyCandidates(data);
+  assert.deepEqual(hits, []);
+});

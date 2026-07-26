@@ -22,7 +22,34 @@
     <aside id="side">
       <h4>Dataset</h4>
       <div class="hint" id="datasetMeta">No file loaded yet.</div>
-      <div class="hint">Filtering, tagging, and CoinFinder integration land in later phases (see the build brief).</div>
+
+      <details class="sect" id="rowFilters" open>
+        <summary>Filters</summary>
+        <div class="row"><label>Frequency class</label></div>
+        <div class="row">
+          <label><input type="checkbox" class="fFreqClass" value="core" checked> Core</label>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" class="fFreqClass" value="softcore" checked> Soft-core</label>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" class="fFreqClass" value="shell" checked> Shell</label>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" class="fFreqClass" value="cloud" checked> Cloud</label>
+        </div>
+        <div class="row"><label for="fAnnotationText">Annotation contains</label></div>
+        <input type="text" id="fAnnotationText" placeholder="e.g. beta-lactamase">
+        <div class="row"><label for="fMinGenomes">Min genomes present in</label></div>
+        <input type="number" id="fMinGenomes" min="0" step="1" value="0">
+        <div class="row"><label for="fMaxGenomes">Max genomes present in</label></div>
+        <input type="number" id="fMaxGenomes" min="0" step="1" placeholder="no cap">
+        <div class="row"><label for="fMinAvgCopies">Min avg copies/genome</label></div>
+        <input type="number" id="fMinAvgCopies" min="0" step="0.1" placeholder="no cap">
+        <button class="act" id="fUndo" disabled>Undo ⤺</button>
+        <button class="act warn" id="fReset">Reset filters</button>
+        <div class="hint">Applies live to the "Filtered groups" table below.</div>
+      </details>
     </aside>
     <div id="sideResize" title="Drag to resize the panel · double-click to reset"></div>
     <div id="wrap">
