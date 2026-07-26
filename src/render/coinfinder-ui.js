@@ -8,6 +8,8 @@ import { categoryMatrix, crossCategoryPairs, sortBySignificance } from "../analy
 import { renderCategoryMatrix } from "./charts.js";
 import { renderPairTable } from "./pair-table.js";
 import { renderNetworkGraph } from "./network-graph.js";
+import { downloadText } from "./download-util.js";
+import { pairsToDelimited } from "../../export/pair-export.js";
 
 function card(titleText) {
   const c = document.createElement("div");
@@ -32,6 +34,8 @@ function renderPairCard(panel, data) {
     <button class="act" id="pairAllBtn" style="width:auto">All pairs</button>
     <button class="act" id="pairCrossBtn" style="width:auto">Cross-category pairs only</button>
     <button class="act" id="pairSigBtn" style="width:auto">Sort by significance (ignore category)</button>
+    <button class="act" id="pairExportCsv" style="width:auto">Export CSV</button>
+    <button class="act" id="pairExportTsv" style="width:auto">Export TSV</button>
   `;
   c.appendChild(controls);
   const tableDiv = document.createElement("div");
@@ -39,10 +43,19 @@ function renderPairCard(panel, data) {
   c.appendChild(tableDiv);
   panel.appendChild(c);
 
-  const handle = renderPairTable(tableDiv, data.pairs);
-  c.querySelector("#pairAllBtn").addEventListener("click", () => handle.setPairs(data.pairs));
-  c.querySelector("#pairCrossBtn").addEventListener("click", () => handle.setPairs(crossCategoryPairs(data)));
-  c.querySelector("#pairSigBtn").addEventListener("click", () => handle.setPairs(sortBySignificance(data.pairs)));
+  let currentPairs = data.pairs;
+  const handle = renderPairTable(tableDiv, currentPairs);
+  const setPairs = (pairs) => { currentPairs = pairs; handle.setPairs(pairs); };
+  c.querySelector("#pairAllBtn").addEventListener("click", () => setPairs(data.pairs));
+  c.querySelector("#pairCrossBtn").addEventListener("click", () => setPairs(crossCategoryPairs(data)));
+  c.querySelector("#pairSigBtn").addEventListener("click", () => setPairs(sortBySignificance(data.pairs)));
+  c.querySelector("#pairExportCsv").addEventListener("click", () => downloadText("pangenome-pairs.csv", pairsToDelimited(currentPairs, ","), "text/csv"));
+  c.querySelector("#pairExportTsv").addEventListener("click", () => downloadText("pangenome-pairs.tsv", pairsToDelimited(currentPairs, "\t"), "text/tab-separated-values"));
+
+  const crossLink = document.createElement("div");
+  crossLink.className = "hint";
+  crossLink.innerHTML = `For a report: export this table, or the network view below as SVG, then stage the underlying sequences in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a> for a closer look at an interesting pair.`;
+  c.appendChild(crossLink);
 }
 
 function renderMatrixCard(panel, data) {

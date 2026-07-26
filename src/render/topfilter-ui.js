@@ -13,6 +13,9 @@
 import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../analysis/topfilter.js";
 import { listTags } from "../analysis/tags.js";
 import { renderGroupTable, DEFAULT_COLS } from "./group-table.js";
+import { openGroupDetail } from "./group-detail.js";
+import { downloadText } from "./download-util.js";
+import { geneIdListText, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../../export/group-export.js";
 
 function card(titleText) {
   const c = document.createElement("div");
@@ -70,7 +73,8 @@ let active = null; // { data, groupTableHandle, history: [criteria,...] }
 function applyCriteria(criteria, { pushHistory = true } = {}) {
   if (!active) return;
   if (pushHistory) active.history.push(criteria);
-  active.groupTableHandle.setGroups(filterGroups(active.data, criteria));
+  active.currentGroups = filterGroups(active.data, criteria);
+  active.groupTableHandle.setGroups(active.currentGroups);
   document.getElementById("fUndo").disabled = active.history.length <= 1;
 }
 
@@ -130,7 +134,7 @@ function renderPatternMatchCard(panel, data) {
       return;
     }
     const hits = patternMatch(data, { presentIn, absentFrom });
-    renderGroupTable(resultDiv, hits);
+    renderGroupTable(resultDiv, hits, { onRowClick: openGroupDetail });
   });
 }
 
@@ -175,8 +179,11 @@ function renderSingletonMultiCopyCard(panel, data) {
     <h4>Singleton groups per genome</h4>
     <div class="hint" id="singletonSummary"></div>
     <h4>Multi-copy family candidates</h4>
+    <div class="hint">A feeder into Clann's multi-copy supertree step.</div>
     <div class="row"><label for="mcThreshold">Min avg copies per genome</label></div>
     <input type="number" id="mcThreshold" min="0" step="0.1" value="1.5">
+    <button class="act" id="mcExport" style="width:auto">Export ${MULTICOPY_EXPORT_FILENAME}</button>
+    <div class="hint">Align and build a multi-copy gene-family supertree, then view it in <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a>.</div>
   `;
   const multiCopyDiv = document.createElement("div");
   multiCopyDiv.style.marginTop = "10px";
@@ -191,11 +198,14 @@ function renderSingletonMultiCopyCard(panel, data) {
     .join(" · ") || "No singleton (genome-unique) groups found.";
   c.querySelector("#singletonSummary").textContent = summary;
 
+  let currentMultiCopy = [];
   function drawMultiCopy() {
     const threshold = Number(c.querySelector("#mcThreshold").value) || 0;
-    renderGroupTable(multiCopyDiv, multiCopyCandidates(data, threshold), { defaultSort: "avgCopiesPerGenome" });
+    currentMultiCopy = multiCopyCandidates(data, threshold);
+    renderGroupTable(multiCopyDiv, currentMultiCopy, { defaultSort: "avgCopiesPerGenome", onRowClick: openGroupDetail });
   }
   c.querySelector("#mcThreshold").addEventListener("input", drawMultiCopy);
+  c.querySelector("#mcExport").addEventListener("click", () => downloadText(MULTICOPY_EXPORT_FILENAME, multiCopyCandidatesCsv(currentMultiCopy), "text/csv"));
   drawMultiCopy();
 }
 
@@ -205,14 +215,28 @@ export function mountTopFilterCards(panel, data) {
   populateTagCheckboxes(data);
 
   const filteredCard = card("Filtered groups");
+  const exportRow = document.createElement("div");
+  exportRow.className = "chart-controls";
+  exportRow.innerHTML = `
+    <button class="act" id="filteredExportIds" style="width:auto">Export gene IDs (.txt)</button>
+    <button class="act" id="filteredExportCsv" style="width:auto">Export table (.csv)</button>
+  `;
+  filteredCard.appendChild(exportRow);
   const tableDiv = document.createElement("div");
   filteredCard.appendChild(tableDiv);
   panel.appendChild(filteredCard);
-  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"] });
+  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"], onRowClick: openGroupDetail });
 
-  active = { data, groupTableHandle, history: [DEFAULT_CRITERIA] };
+  active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA) };
   writeSidebarCriteria(DEFAULT_CRITERIA);
   document.getElementById("fUndo").disabled = true;
+
+  exportRow.querySelector("#filteredExportIds").addEventListener("click", () => downloadText("filtered-groups-gene-ids.txt", geneIdListText(active.currentGroups)));
+  exportRow.querySelector("#filteredExportCsv").addEventListener("click", () => downloadText("filtered-groups.csv", groupTableCsv(active.currentGroups), "text/csv"));
+  const crossLink = document.createElement("div");
+  crossLink.className = "hint";
+  crossLink.innerHTML = `Extract these sequences from your genome FASTA/GFF set, then explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>.`;
+  filteredCard.appendChild(crossLink);
 
   renderPatternMatchCard(panel, data);
   renderTwoGroupCard(panel, data);

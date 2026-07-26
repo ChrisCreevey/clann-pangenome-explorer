@@ -184,6 +184,18 @@ table.data-table td a:hover{text-decoration:underline}
 .network-wrap{overflow:hidden;border:1px solid var(--line);border-radius:6px}
 .network-svg{width:100%;height:auto;display:block;cursor:grab;touch-action:none;background:var(--bg)}
 .network-svg:active{cursor:grabbing}
+
+.detail-overlay{position:absolute;inset:0;background:color-mix(in srgb, black 45%, transparent);
+  z-index:30;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 20px}
+.detail-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-md);
+  padding:18px 22px;max-width:640px;width:100%}
+.detail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.detail-header h2{margin:0;font-size:17px;color:var(--ink);font-family:var(--font-mono)}
+button.detail-close{width:auto;flex:none}
+.detail-dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:0 0 14px;font-size:12.5px}
+.detail-dl dt{color:var(--muted)}
+.detail-dl dd{margin:0;word-break:break-word}
+.detail-card .sect{margin-top:10px}
 .heatmap-canvas{display:block;width:100%;cursor:grab;touch-action:none}
 .heatmap-canvas:active{cursor:grabbing}
 .donut-svg{display:block;margin:0 auto}
