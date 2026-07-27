@@ -37,6 +37,42 @@ function findEndOfCentralDirectory(bytes) {
   return null;
 }
 
+/**
+ * Read the Zip64 "extended information" extra field (id 0x0001), if
+ * present, for whichever of {uncompressedSize, compressedSize,
+ * localHeaderOffset} were pinned at the 0xFFFFFFFF placeholder in the
+ * main 32-bit fields. Per the zip spec, only the overflowing fields are
+ * present, always in this fixed order — the standard 32-bit fields are
+ * left untouched for the fields that already fit.
+ */
+function readZip64Extra(bytes, extraStart, extraFieldLength, needs) {
+  const result = { uncompressedSize: null, compressedSize: null, localHeaderOffset: null };
+  let pos = extraStart;
+  const end = extraStart + extraFieldLength;
+  while (pos + 4 <= end) {
+    const header = new DataView(bytes.buffer, bytes.byteOffset + pos, 4);
+    const id = header.getUint16(0, true);
+    const size = header.getUint16(2, true);
+    if (id === 0x0001) {
+      const data = new DataView(bytes.buffer, bytes.byteOffset + pos + 4, size);
+      let off = 0;
+      const readUint64 = () => {
+        const low = data.getUint32(off, true);
+        const high = data.getUint32(off + 4, true);
+        off += 8;
+        // Safe for realistic file sizes (well under Number.MAX_SAFE_INTEGER).
+        return high * 4294967296 + low;
+      };
+      if (needs.uncompressedSize && off + 8 <= size) result.uncompressedSize = readUint64();
+      if (needs.compressedSize && off + 8 <= size) result.compressedSize = readUint64();
+      if (needs.localHeaderOffset && off + 8 <= size) result.localHeaderOffset = readUint64();
+      break;
+    }
+    pos += 4 + size;
+  }
+  return result;
+}
+
 /** List every file entry in a ZIP archive's central directory. */
 export function listZipEntries(bytes) {
   const eocd = findEndOfCentralDirectory(bytes);
@@ -48,14 +84,32 @@ export function listZipEntries(bytes) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 46);
     if (view.getUint32(0, true) !== 0x02014b50) break; // central file header signature
     const compressionMethod = view.getUint16(10, true);
-    const compressedSize = view.getUint32(20, true);
+    let compressedSize = view.getUint32(20, true);
+    let uncompressedSize = view.getUint32(24, true);
     const fileNameLength = view.getUint16(28, true);
     const extraFieldLength = view.getUint16(30, true);
     const fileCommentLength = view.getUint16(32, true);
-    const localHeaderOffset = view.getUint32(42, true);
+    let localHeaderOffset = view.getUint32(42, true);
     const nameStart = offset + 46;
     const name = decoder.decode(bytes.subarray(nameStart, nameStart + fileNameLength));
-    entries.push({ name, compressionMethod, compressedSize, localHeaderOffset });
+
+    // Zip64: any of the three 32-bit fields above pinned at 0xFFFFFFFF has
+    // its real value in a Zip64 extra field instead. Some zip writers
+    // (notably macOS's Archive Utility / Finder "Compress") emit this
+    // defensively for large single files even well under the 4GB size that
+    // strictly requires it, so this isn't just a >4GB-archive concern.
+    if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) {
+      const zip64 = readZip64Extra(bytes, nameStart + fileNameLength, extraFieldLength, {
+        uncompressedSize: uncompressedSize === 0xffffffff,
+        compressedSize: compressedSize === 0xffffffff,
+        localHeaderOffset: localHeaderOffset === 0xffffffff,
+      });
+      if (zip64.uncompressedSize != null) uncompressedSize = zip64.uncompressedSize;
+      if (zip64.compressedSize != null) compressedSize = zip64.compressedSize;
+      if (zip64.localHeaderOffset != null) localHeaderOffset = zip64.localHeaderOffset;
+    }
+
+    entries.push({ name, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset });
     offset = nameStart + fileNameLength + extraFieldLength + fileCommentLength;
   }
   return entries;
@@ -89,7 +143,11 @@ export async function decompressIfNeeded(file) {
   }
 
   if (looksLikeZip(bytes)) {
-    const entries = listZipEntries(bytes).filter((e) => !e.name.endsWith("/"));
+    // Skip directory entries and macOS's AppleDouble metadata files
+    // (__MACOSX/._real-file.csv) — Finder/Archive Utility adds one of
+    // these alongside every real file it zips, and it would otherwise be
+    // able to win the "first .csv/.tsv/.tab/.txt match" pick below.
+    const entries = listZipEntries(bytes).filter((e) => !e.name.endsWith("/") && !/(^|\/)__MACOSX\//.test(e.name));
     if (!entries.length) throw new Error("This ZIP archive has no files in it.");
     const chosen = entries.find((e) => /\.(csv|tsv|tab|txt)$/i.test(e.name)) || entries[0];
     const out = await extractZipEntry(bytes, chosen);
