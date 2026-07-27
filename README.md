@@ -65,3 +65,17 @@ All file inputs also accept `.gz`/`.zip` compressed versions, decompressed entir
 - Export constituent gene IDs (a selected group or the current filtered set) as a flat list, ready for sequence extraction from a genomes FASTA/GFF set
 - Export the multi-copy/gene-family candidate list, or a filtered CoinFinder pair table, as CSV/TSV
 - Cross-links to [Clann BLAST Explorer](https://chriscreevey.github.io/clann-blast-explorer/) (extract sequences, explore hits) and [Clann Tree Viewer](https://chriscreevey.github.io/clann-tree-viewer/) (align and build a tree) from every export surface
+
+## Performance and scale
+
+Presence/absence data is stored as a flat typed array (2 bytes per group-per-genome cell) rather than one object per cell, and the accumulation-curve computation avoids rescanning every group at every step. Measured directly in-browser, not estimated:
+
+| Dataset | File size | Peak memory | Parse | Render | Total |
+|---|---|---|---|---|---|
+| 30 genomes × 250 groups (the bundled example) | 140 KB | negligible | instant | instant | instant |
+| 10,000 genomes × 2,000 groups | 31 MB | 174 MB | 0.55s | 2.2s | ~2.7s |
+| 10,000 genomes × 20,000 groups | 310 MB | ~1.6 GB | 5.2s | 6.5s | ~11.7s |
+
+For reference, the 10,000×20,000 case previously required an estimated >11GB of heap and took ~30s just to render (before the accumulation-curve computation was optimised) — combined, it would have crashed most browser tabs outright. Once loaded, filtering, tagging, and sorting stay fast (tens of milliseconds) regardless of dataset size, since none of those operations re-touch the full matrix.
+
+The practical ceiling is still the browser tab's own memory limit (commonly ~4GB) rather than any limit in the code — a dataset roughly an order of magnitude past the numbers above (tens of thousands of genomes with a large accessory genome) is where memory, not computation time, would likely become the binding constraint.
