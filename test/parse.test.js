@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { parse, detectFormat, ColumnMappingNeeded, parsePresenceCell } from "../src/parse/index.js";
-import { assignFrequencyClasses, frequencyClassCounts, frequencySpectrum, DEFAULT_THRESHOLDS } from "../src/analysis/frequency.js";
+import { assignFrequencyClasses, frequencyClassCounts, frequencySpectrum, adjustThresholds, DEFAULT_THRESHOLDS } from "../src/analysis/frequency.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
@@ -134,4 +134,42 @@ test("frequencyClassCounts and frequencySpectrum summarise groups correctly", ()
   assert.equal(spectrum[0], 1); // groupC present in exactly 1 genome
   assert.equal(spectrum[1], 1); // groupB present in exactly 2 genomes
   assert.equal(spectrum[2], 2); // groupA, groupD present in all 3
+});
+
+test("adjustThresholds leaves valid thresholds unchanged", () => {
+  const next = adjustThresholds(DEFAULT_THRESHOLDS, "core", 99);
+  assert.deepEqual(next, DEFAULT_THRESHOLDS);
+});
+
+test("adjustThresholds cascades softcore and shell down when core is lowered below them", () => {
+  const next = adjustThresholds(DEFAULT_THRESHOLDS, "core", 10);
+  assert.equal(next.core, 10);
+  assert.equal(next.softcore, 9); // was 95, now must be < 10
+  assert.equal(next.shell, 8); // was 15, now must be < 9
+});
+
+test("adjustThresholds clamps softcore below core when raised too high, cascading to shell", () => {
+  const next = adjustThresholds(DEFAULT_THRESHOLDS, "softcore", 99);
+  assert.equal(next.core, 99);
+  assert.equal(next.softcore, 98); // clamped below core
+  assert.equal(next.shell, 15); // unaffected, still below the new softcore
+});
+
+test("adjustThresholds clamps shell below softcore when raised too high", () => {
+  const next = adjustThresholds(DEFAULT_THRESHOLDS, "shell", 95);
+  assert.equal(next.core, 99);
+  assert.equal(next.softcore, 95);
+  assert.equal(next.shell, 94); // clamped below softcore
+});
+
+test("adjustThresholds rounds and clamps raw input to [0, 100]", () => {
+  assert.equal(adjustThresholds(DEFAULT_THRESHOLDS, "core", 150).core, 100);
+  assert.equal(adjustThresholds(DEFAULT_THRESHOLDS, "shell", -5).shell, 0);
+  assert.equal(adjustThresholds(DEFAULT_THRESHOLDS, "core", 82.6).core, 83);
+});
+
+test("adjustThresholds does not mutate the previous thresholds object", () => {
+  const prev = { ...DEFAULT_THRESHOLDS };
+  adjustThresholds(prev, "core", 5);
+  assert.deepEqual(prev, DEFAULT_THRESHOLDS);
 });

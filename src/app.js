@@ -6,6 +6,7 @@
 // pair upload in a later phase).
 
 import { parse, ColumnMappingNeeded } from "./parse/index.js";
+import { assignFrequencyClasses, adjustThresholds } from "./analysis/frequency.js";
 import { mountExplorer } from "./pangenome.js";
 import { renderColumnMapping } from "./render/column-mapping.js";
 import { decompressIfNeeded } from "./parse/compressed.js";
@@ -51,6 +52,7 @@ function loadData(data, name) {
   document.getElementById("tagListStatus").textContent = "";
   document.getElementById("associatedStatus").textContent = "No associated-pairs file loaded.";
   document.getElementById("disassociatedStatus").textContent = "No disassociated-pairs file loaded.";
+  writeThresholdInputs(data.meta.freqClassThresholds);
   if (handle) handle = handle.setData(data);
   else handle = mountExplorer(explorerEl, data);
 }
@@ -183,6 +185,30 @@ wrap.addEventListener("drop", (e) => {
   const f = e.dataTransfer.files && e.dataTransfer.files[0];
   openFile(f);
 });
+
+// --- frequency class thresholds (build brief §9a: user-adjustable, session-only) ---
+const thCore = document.getElementById("thCore");
+const thSoftcore = document.getElementById("thSoftcore");
+const thShell = document.getElementById("thShell");
+
+function writeThresholdInputs(thresholds) {
+  thCore.value = thresholds.core;
+  thSoftcore.value = thresholds.softcore;
+  thShell.value = thresholds.shell;
+}
+
+function onThresholdChange(key, input) {
+  return () => {
+    if (!currentData) return;
+    const next = adjustThresholds(currentData.meta.freqClassThresholds, key, Number(input.value));
+    assignFrequencyClasses(currentData, next);
+    writeThresholdInputs(next);
+    refreshExplorer();
+  };
+}
+thCore.addEventListener("change", onThresholdChange("core", thCore));
+thSoftcore.addEventListener("change", onThresholdChange("softcore", thSoftcore));
+thShell.addEventListener("change", onThresholdChange("shell", thShell));
 
 // --- annotation upload (Workflow A/B auto-detected) ---
 const annotationFileInput = document.getElementById("annotationFileInput");

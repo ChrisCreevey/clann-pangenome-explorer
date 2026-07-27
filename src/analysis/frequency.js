@@ -35,6 +35,29 @@ export function assignFrequencyClasses(data, thresholds = DEFAULT_THRESHOLDS) {
   return data;
 }
 
+const MIN_GAP = 1; // minimum percentage-point separation enforced between adjacent thresholds
+
+/**
+ * Adjust {core, softcore, shell} thresholds after the user edits one of
+ * them by `key`, cascading any lower boundary down so it stays strictly
+ * below the one(s) above it — the user only ever directly sets the
+ * threshold they touched; thresholds below it move out of the way rather
+ * than the edit being rejected. Values are clamped to [0, 100] and
+ * rounded to whole percentage points (matching the default 99/95/15
+ * convention). Returns a new thresholds object; does not mutate `prev`.
+ */
+export function adjustThresholds(prev, key, rawValue) {
+  const value = Math.max(0, Math.min(100, Math.round(rawValue)));
+  const next = { ...prev, [key]: value };
+
+  if (key === "core" || key === "softcore") {
+    if (next.softcore >= next.core) next.softcore = Math.max(0, next.core - MIN_GAP);
+  }
+  if (next.shell >= next.softcore) next.shell = Math.max(0, next.softcore - MIN_GAP);
+
+  return next;
+}
+
 /** Group counts by frequency class, in a fixed display order. */
 export function frequencyClassCounts(data) {
   const counts = { core: 0, softcore: 0, shell: 0, cloud: 0 };

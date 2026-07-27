@@ -82,6 +82,18 @@
       <h4>Dataset</h4>
       <div class="hint" id="datasetMeta">No file loaded yet.</div>
 
+      <details class="sect" id="rowThresholds">
+        <summary>Frequency class thresholds</summary>
+        <div class="hint">Roary's conventional defaults, shown below. Each is a minimum % of genomes a group must be present in. Lower boundaries automatically move below whichever one you change, so core &gt; soft-core &gt; shell always holds.</div>
+        <div class="row"><label for="thCore">Core ≥ %</label></div>
+        <input type="number" id="thCore" min="0" max="100" step="1" value="99">
+        <div class="row"><label for="thSoftcore">Soft-core ≥ %</label></div>
+        <input type="number" id="thSoftcore" min="0" max="100" step="1" value="95">
+        <div class="row"><label for="thShell">Shell ≥ %</label></div>
+        <input type="number" id="thShell" min="0" max="100" step="1" value="15">
+        <div class="hint">Below the shell threshold is "cloud".</div>
+      </details>
+
       <details class="sect" id="rowFilters" open>
         <summary>Filters</summary>
         <div class="row"><label>Frequency class</label></div>
