@@ -181,6 +181,7 @@ table.data-table td a:hover{text-decoration:underline}
 .chart-legend{margin-top:6px;font-size:11px;color:var(--muted)}
 .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
 .heatmap-wrap{overflow:hidden;border:1px solid var(--line);border-radius:6px}
+.genome-bars-scroll{max-height:420px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--line);border-radius:6px}
 .network-wrap{overflow:hidden;border:1px solid var(--line);border-radius:6px}
 .network-svg{width:100%;height:auto;display:block;cursor:grab;touch-action:none;background:var(--bg)}
 .network-svg:active{cursor:grabbing}

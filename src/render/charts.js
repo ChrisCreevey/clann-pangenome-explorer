@@ -163,7 +163,12 @@ export function renderGenomeBarChart(container, genomes) {
   });
 
   container.innerHTML = "";
-  container.appendChild(svg);
+  // Scroll the bars themselves (a row per genome, so this can get tall with
+  // many genomes) but keep the legend always visible, outside the scroll area.
+  const scrollWrap = document.createElement("div");
+  scrollWrap.className = "genome-bars-scroll";
+  scrollWrap.appendChild(svg);
+  container.appendChild(scrollWrap);
 
   const legend = document.createElement("div");
   legend.className = "chart-legend";
