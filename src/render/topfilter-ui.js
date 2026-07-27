@@ -134,7 +134,7 @@ function renderPatternMatchCard(panel, data) {
       return;
     }
     const hits = patternMatch(data, { presentIn, absentFrom });
-    renderGroupTable(resultDiv, hits, { onRowClick: openGroupDetail });
+    renderGroupTable(resultDiv, hits, { onRowClick: (group) => openGroupDetail(data, group) });
   });
 }
 
@@ -202,7 +202,7 @@ function renderSingletonMultiCopyCard(panel, data) {
   function drawMultiCopy() {
     const threshold = Number(c.querySelector("#mcThreshold").value) || 0;
     currentMultiCopy = multiCopyCandidates(data, threshold);
-    renderGroupTable(multiCopyDiv, currentMultiCopy, { defaultSort: "avgCopiesPerGenome", onRowClick: openGroupDetail });
+    renderGroupTable(multiCopyDiv, currentMultiCopy, { defaultSort: "avgCopiesPerGenome", onRowClick: (group) => openGroupDetail(data, group) });
   }
   c.querySelector("#mcThreshold").addEventListener("input", drawMultiCopy);
   c.querySelector("#mcExport").addEventListener("click", () => downloadText(MULTICOPY_EXPORT_FILENAME, multiCopyCandidatesCsv(currentMultiCopy), "text/csv"));
@@ -225,13 +225,13 @@ export function mountTopFilterCards(panel, data) {
   const tableDiv = document.createElement("div");
   filteredCard.appendChild(tableDiv);
   panel.appendChild(filteredCard);
-  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"], onRowClick: openGroupDetail });
+  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"], onRowClick: (group) => openGroupDetail(data, group) });
 
   active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA) };
   writeSidebarCriteria(DEFAULT_CRITERIA);
   document.getElementById("fUndo").disabled = true;
 
-  exportRow.querySelector("#filteredExportIds").addEventListener("click", () => downloadText("filtered-groups-gene-ids.txt", geneIdListText(active.currentGroups)));
+  exportRow.querySelector("#filteredExportIds").addEventListener("click", () => downloadText("filtered-groups-gene-ids.txt", geneIdListText(data, active.currentGroups)));
   exportRow.querySelector("#filteredExportCsv").addEventListener("click", () => downloadText("filtered-groups.csv", groupTableCsv(active.currentGroups), "text/csv"));
   const crossLink = document.createElement("div");
   crossLink.className = "hint";

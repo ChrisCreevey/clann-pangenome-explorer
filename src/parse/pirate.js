@@ -1,15 +1,16 @@
 // pirate.js — PIRATE.gene_families.tsv. PIRATE reports allele-level calls
 // per genome rather than raw gene IDs; this module is the only place that
-// needs to know that — it rolls allele calls up into the same
-// { copyCount, geneIds } cell shape every other parser produces, so nothing
-// downstream has to special-case PIRATE.
+// needs to know that — it hands the raw allele-call text through as
+// `rawRow` in the same shape every other parser produces (parsed into the
+// shared presence matrix centrally, in index.js), so nothing downstream
+// has to special-case PIRATE.
 //
 // Column layout: a block of family-level metadata columns ending in
 // "threshold%", followed by one column per genome holding that genome's
 // allele call(s) for the family (blank if absent, ';'-separated if the
 // family has multiple alleles/copies in that genome).
 
-import { splitDelimited, detectDelimiter, parsePresenceCell } from "./shared.js";
+import { splitDelimited, detectDelimiter } from "./shared.js";
 
 export function looksLikePirate(header) {
   return header.some((h) => /^threshold%?$/i.test(h.trim()));
@@ -34,11 +35,8 @@ export function parsePirate(text) {
     const row = splitDelimited(line, delimiter);
     const groupId = groupIdx >= 0 ? row[groupIdx] : row[0];
     const annotation = (productIdx >= 0 && row[productIdx]) || (consensusIdx >= 0 && row[consensusIdx]) || null;
-    const cells = {};
-    genomeNames.forEach((name, i) => {
-      cells[name] = parsePresenceCell(row[metaColCount + i]);
-    });
-    return { groupId, representativeId: groupId, annotation, cells };
+    const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
+    return { groupId, representativeId: groupId, annotation, rawRow };
   });
 
   return { genomeNames, groups };

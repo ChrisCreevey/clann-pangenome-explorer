@@ -3,6 +3,8 @@
 // Capped and flagged as approximate for large genome sets. Uses a seeded
 // PRNG so results (and tests) are deterministic for a given seed.
 
+import { presenceVector } from "../parse/matrix.js";
+
 const DEFAULT_PERMUTATIONS = 20;
 // Above this many genomes, permutations are capped harder to stay responsive
 // in the browser — the curve is already a statistical approximation, so a
@@ -46,12 +48,9 @@ export function computeAccumulationCurves(data, opts = {}) {
     return { genomeCounts: [], pangenomeMean: [], coreMean: [], pangenomeStd: [], coreStd: [], permutations, approximate };
   }
 
-  // presence[groupIndex] = Set of genome indices the group is present in
-  const presenceBits = data.groups.map((g) => {
-    const bits = new Uint8Array(n);
-    genomeNames.forEach((name, i) => { bits[i] = g.cells[name] && g.cells[name].copyCount > 0 ? 1 : 0; });
-    return bits;
-  });
+  // Zero-copy per-group copy-count views straight into the shared presence
+  // matrix — no per-group array to allocate or fill here.
+  const presenceBits = data.groups.map((g) => presenceVector(data, g.groupIndex));
 
   const rng = mulberry32(seed);
   const pangenomeSums = new Array(n).fill(0);

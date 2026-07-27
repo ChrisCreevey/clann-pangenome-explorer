@@ -7,6 +7,7 @@
 // so re-sorting is the only thing that re-rasterises.
 
 import { clusterOrder, groupPresenceVector, MAX_CLUSTER_ITEMS } from "../analysis/clustering.js";
+import { presenceVector } from "../parse/matrix.js";
 
 const FREQ_CLASS_RGB = {
   core: [11, 114, 104],       // --compute-500
@@ -80,9 +81,9 @@ export function renderHeatmap(container, data) {
     rowOrder.forEach((groupIdx, row) => {
       const group = groups[groupIdx];
       const [pr, pg, pb] = rowColor(group);
+      const vector = presenceVector(data, group.groupIndex);
       for (let col = 0; col < w; col++) {
-        const cell = group.cells[genomeNames[col]];
-        const present = cell && cell.copyCount > 0;
+        const present = vector[col] > 0;
         const [r, g, b] = present ? [pr, pg, pb] : EMPTY_RGB;
         const idx = (row * w + col) * 4;
         buf[idx] = r; buf[idx + 1] = g; buf[idx + 2] = b; buf[idx + 3] = 255;
@@ -120,7 +121,7 @@ export function renderHeatmap(container, data) {
 
   function applySort(mode) {
     if (mode === "cluster") {
-      const vectors = groups.map((g) => groupPresenceVector(g, genomeNames));
+      const vectors = groups.map((g) => groupPresenceVector(data, g.groupIndex));
       rowOrder = clusterOrder(vectors);
       container.querySelector("#hmNote").textContent =
         groups.length > MAX_CLUSTER_ITEMS
@@ -193,9 +194,9 @@ export function renderHeatmap(container, data) {
     rowOrder.forEach((groupIdx, row) => {
       const group = groups[groupIdx];
       const [r, g, b] = rowColor(group);
+      const vector = presenceVector(data, group.groupIndex);
       for (let col = 0; col < genomeCount; col++) {
-        const cell = group.cells[genomeNames[col]];
-        const present = cell && cell.copyCount > 0;
+        const present = vector[col] > 0;
         const color = present ? `rgb(${r},${g},${b})` : `rgb(${EMPTY_RGB.join(",")})`;
         rects.push(`<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="${color}"/>`);
       }

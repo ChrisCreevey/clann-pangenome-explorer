@@ -33,18 +33,19 @@ test("geneIdListText returns a sorted, deduplicated, one-per-line gene ID list",
   const data = loadRoary();
   const groupA = data.groups.find((g) => g.groupId === "groupA");
   const groupD = data.groups.find((g) => g.groupId === "groupD");
-  const text = geneIdListText([groupA, groupD]);
+  const text = geneIdListText(data, [groupA, groupD]);
   assert.equal(text, "groupA_1\ngroupA_2\ngroupA_3\ngroupD_1\ngroupD_1b\ngroupD_2\ngroupD_3\n");
 });
 
 test("geneIdListText on an empty group set produces an empty string", () => {
-  assert.equal(geneIdListText([]), "");
+  const data = loadRoary();
+  assert.equal(geneIdListText(data, []), "");
 });
 
 test("geneIdTableCsv keeps group/genome traceability for every constituent gene", () => {
   const data = loadRoary();
   const groupB = data.groups.find((g) => g.groupId === "groupB");
-  const csv = geneIdTableCsv([groupB]);
+  const csv = geneIdTableCsv(data, [groupB]);
   assert.equal(csv, "group_id,genome,gene_id\ngroupB,G1,groupB_1\ngroupB,G2,groupB_2\n");
 });
 

@@ -51,9 +51,8 @@ test("clusterOrder returns a permutation of all indices and groups identical vec
   assert.ok(Math.abs(pos(0) - pos(2)) === 1);
 });
 
-test("groupPresenceVector reflects genome membership in genome order", () => {
+test("groupPresenceVector reflects genome membership (copy count) in genome order", () => {
   const data = parse(fixture("roary-small.csv"), { filename: "gene_presence_absence.csv" });
-  const genomeNames = data.genomes.map((g) => g.name);
   const groupB = data.groups.find((g) => g.groupId === "groupB");
-  assert.deepEqual(groupPresenceVector(groupB, genomeNames), [1, 1, 0]);
+  assert.deepEqual([...groupPresenceVector(data, groupB.groupIndex)], [1, 1, 0]);
 });

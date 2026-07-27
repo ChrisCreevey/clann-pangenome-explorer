@@ -4,7 +4,7 @@
 // unambiguous, throws ColumnMappingNeeded with a preview so the caller can
 // show a confirmation UI (mirrors clann-blast-explorer's headerless-file handling).
 
-import { ColumnMappingNeeded, splitDelimited, detectDelimiter, parsePresenceCell } from "./shared.js";
+import { ColumnMappingNeeded, splitDelimited, detectDelimiter } from "./shared.js";
 
 const PREVIEW_ROWS = 8;
 
@@ -79,11 +79,8 @@ export function parseGenericMatrix(text, opts = {}) {
   const genomeNames = genomeColumns.map((c) => header[c]);
   const groups = rows.map((row) => {
     const groupId = row[groupIdColumn];
-    const cells = {};
-    genomeColumns.forEach((c, i) => {
-      cells[genomeNames[i]] = parsePresenceCell(row[c]);
-    });
-    return { groupId, representativeId: groupId, annotation: null, cells };
+    const rawRow = genomeColumns.map((c) => row[c]);
+    return { groupId, representativeId: groupId, annotation: null, rawRow };
   });
 
   return { genomeNames, groups };

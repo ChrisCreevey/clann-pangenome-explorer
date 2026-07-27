@@ -3,15 +3,14 @@
 // (Workflow B, rolled up to a per-group consensus). Build brief §6 Phase 5.
 
 import { splitDelimited, detectDelimiter } from "./shared.js";
+import { allGeneIdsForGroup } from "./matrix.js";
 
 /** Every gene ID appearing in any group's cells, mapped back to its group ID. */
 export function buildGeneToGroupIndex(data) {
   const index = new Map();
   for (const group of data.groups) {
-    for (const genomeName of Object.keys(group.cells)) {
-      for (const geneId of group.cells[genomeName].geneIds || []) {
-        index.set(geneId, group.groupId);
-      }
+    for (const geneId of allGeneIdsForGroup(data, group.groupIndex)) {
+      index.set(geneId, group.groupId);
     }
   }
   return index;

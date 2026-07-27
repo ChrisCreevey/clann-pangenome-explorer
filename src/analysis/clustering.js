@@ -5,6 +5,8 @@
 // visually pull similar rows/columns together without the cost of a full
 // clustering algorithm. Capped for very large matrices to stay responsive.
 
+import { presenceVector } from "../parse/matrix.js";
+
 const MAX_CLUSTER_ITEMS = 800;
 
 function jaccardSimilarity(a, b) {
@@ -51,7 +53,12 @@ export function clusterOrder(items) {
 
 export { MAX_CLUSTER_ITEMS };
 
-/** Build a group's presence vector (0/1 per genome, in genome order) for clustering/heatmap use. */
-export function groupPresenceVector(group, genomeNames) {
-  return genomeNames.map((name) => (group.cells[name] && group.cells[name].copyCount > 0 ? 1 : 0));
+/**
+ * A group's presence vector (copy count per genome, in genome order) for
+ * clustering/heatmap use — a zero-copy view straight into the shared
+ * presence matrix. jaccardSimilarity() only cares whether each entry is
+ * truthy, so the raw copy count (rather than a normalised 0/1) is fine.
+ */
+export function groupPresenceVector(data, groupIndex) {
+  return presenceVector(data, groupIndex);
 }

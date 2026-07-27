@@ -2,7 +2,7 @@
 // Roary-compatible gene_presence_absence.csv / gene_presence_absence_roary.csv
 // (near-identical column set, minor naming differences).
 
-import { splitDelimited, detectDelimiter, parsePresenceCell } from "./shared.js";
+import { splitDelimited, detectDelimiter } from "./shared.js";
 
 // Fixed metadata columns preceding the per-genome columns. Panaroo's naming
 // differs slightly ("Non-unique Gene name" vs "Non-unique gene name" etc.)
@@ -54,11 +54,8 @@ export function parseRoary(text) {
     const row = splitDelimited(line, delimiter);
     const groupId = row[0];
     const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
-    const cells = {};
-    genomeNames.forEach((name, i) => {
-      cells[name] = parsePresenceCell(row[metaColCount + i]);
-    });
-    return { groupId, representativeId: groupId, annotation, cells };
+    const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
+    return { groupId, representativeId: groupId, annotation, rawRow };
   });
 
   return { genomeNames, groups };

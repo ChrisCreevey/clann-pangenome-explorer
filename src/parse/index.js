@@ -3,14 +3,19 @@
 //
 // PangenomeData is the single internal shape every renderer consumes (see
 // build brief §4). Format-specific parsers only need to return a raw shape
-// of { genomeNames, groups: [{ groupId, representativeId, annotation, cells }] }
-// — this module derives every per-group and per-genome stat on top of that.
+// of { genomeNames, groups: [{ groupId, representativeId, annotation, rawRow }] }
+// (rawRow = unparsed per-genome cell text, aligned to genomeNames) — this
+// module builds the typed-array presence matrix and derives every
+// per-group/per-genome stat on top of it (see matrix.js for why: storing
+// presence as a flat Uint16Array instead of one object per cell is what
+// makes 10,000-genome-scale studies feasible in a browser tab).
 
 import { parseRoary, looksLikeRoary } from "./roary.js";
 import { parsePirate, looksLikePirate } from "./pirate.js";
 import { parsePanacota, looksLikePanacota } from "./panacota.js";
 import { parseGenericMatrix } from "./generic-matrix.js";
 import { ColumnMappingNeeded, splitDelimited, detectDelimiter, parsePresenceCell } from "./shared.js";
+import { buildMatrix } from "./matrix.js";
 import { assignFrequencyClasses, DEFAULT_THRESHOLDS } from "../analysis/frequency.js";
 
 export { ColumnMappingNeeded, splitDelimited, detectDelimiter, parsePresenceCell, assignFrequencyClasses };
@@ -50,14 +55,19 @@ export function parse(text, opts = {}) {
 /** Turn a raw { genomeNames, groups } shape into full PangenomeData with derived stats. */
 export function buildPangenomeData(raw, meta = {}) {
   const genomeNames = raw.genomeNames;
-  const genomeTotals = new Map(genomeNames.map((g) => [g, { totalGenes: 0, uniqueGenes: 0, coreGenesPresent: 0 }]));
+  const genomeCount = genomeNames.length;
+  const groupCount = raw.groups.length;
 
-  const groups = raw.groups.map((g) => {
+  const { presenceMatrix, geneIdsByGroup } = buildMatrix(raw.groups, genomeCount);
+
+  const genomeTotals = genomeNames.map(() => ({ totalGenes: 0, uniqueGenes: 0, coreGenesPresent: 0 }));
+
+  const groups = raw.groups.map((g, groupIndex) => {
+    const base = groupIndex * genomeCount;
     let genomesPresentIn = 0;
     let sequencesTotal = 0;
-    for (const name of genomeNames) {
-      const cell = g.cells[name];
-      const copyCount = cell ? cell.copyCount : 0;
+    for (let genomeIndex = 0; genomeIndex < genomeCount; genomeIndex++) {
+      const copyCount = presenceMatrix[base + genomeIndex];
       if (copyCount > 0) genomesPresentIn++;
       sequencesTotal += copyCount;
     }
@@ -73,34 +83,38 @@ export function buildPangenomeData(raw, meta = {}) {
       genomesPresentIn,
       sequencesTotal,
       avgCopiesPerGenome: genomesPresentIn > 0 ? sequencesTotal / genomesPresentIn : 0,
-      cells: g.cells,
+      groupIndex,
     };
   });
 
   for (const g of groups) {
-    for (const name of genomeNames) {
-      const cell = g.cells[name];
-      const copyCount = cell ? cell.copyCount : 0;
+    const base = g.groupIndex * genomeCount;
+    for (let genomeIndex = 0; genomeIndex < genomeCount; genomeIndex++) {
+      const copyCount = presenceMatrix[base + genomeIndex];
       if (copyCount <= 0) continue;
-      const totals = genomeTotals.get(name);
+      const totals = genomeTotals[genomeIndex];
       totals.totalGenes += copyCount;
       if (g.genomesPresentIn === 1) totals.uniqueGenes += copyCount;
     }
   }
 
-  const genomes = genomeNames.map((name) => ({ name, ...genomeTotals.get(name) }));
+  const genomes = genomeNames.map((name, index) => ({ name, index, ...genomeTotals[index] }));
+  const genomeNameToIndex = new Map(genomes.map((genome) => [genome.name, genome.index]));
 
   const data = {
     meta: {
       sourceFilename: meta.sourceFilename ?? null,
       format: meta.format ?? null,
-      genomeCount: genomeNames.length,
-      groupCount: groups.length,
+      genomeCount,
+      groupCount,
       freqClassThresholds: { ...DEFAULT_THRESHOLDS },
       annotationWorkflow: null,
     },
     genomes,
+    genomeNameToIndex,
     groups,
+    presenceMatrix,
+    geneIdsByGroup,
     pairs: [],
     unmatchedPairs: [],
   };

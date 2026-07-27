@@ -2,6 +2,8 @@
 // singleton and multi-copy detection (build brief §6, Phase 4). All pure
 // functions over PangenomeData; no DOM here.
 
+import { copyCountAt } from "../parse/matrix.js";
+
 /**
  * Filter groups by frequency class, presence/sequence counts, average
  * copies per genome, and annotation text. Any criterion left undefined is
@@ -35,14 +37,14 @@ export function filterGroups(data, criteria = {}) {
  * genome of `absentFrom` (either list may be empty).
  */
 export function patternMatch(data, { presentIn = [], absentFrom = [] } = {}) {
+  const presentInIdx = presentIn.map((name) => data.genomeNameToIndex.get(name));
+  const absentFromIdx = absentFrom.map((name) => data.genomeNameToIndex.get(name));
   return data.groups.filter((g) => {
-    for (const name of presentIn) {
-      const cell = g.cells[name];
-      if (!cell || cell.copyCount <= 0) return false;
+    for (const genomeIndex of presentInIdx) {
+      if (copyCountAt(data, g.groupIndex, genomeIndex) <= 0) return false;
     }
-    for (const name of absentFrom) {
-      const cell = g.cells[name];
-      if (cell && cell.copyCount > 0) return false;
+    for (const genomeIndex of absentFromIdx) {
+      if (copyCountAt(data, g.groupIndex, genomeIndex) > 0) return false;
     }
     return true;
   });
@@ -57,14 +59,15 @@ export function patternMatch(data, { presentIn = [], absentFrom = [] } = {}) {
  * +0.5 correction when any cell is zero, to keep the ratio finite.
  */
 export function twoGroupComparison(data, genomesA, genomesB) {
-  const presentCount = (group, names) => names.reduce((n, name) => {
-    const cell = group.cells[name];
-    return n + (cell && cell.copyCount > 0 ? 1 : 0);
-  }, 0);
+  const idxA = genomesA.map((name) => data.genomeNameToIndex.get(name));
+  const idxB = genomesB.map((name) => data.genomeNameToIndex.get(name));
+  const presentCount = (group, indices) => indices.reduce((n, genomeIndex) => (
+    n + (copyCountAt(data, group.groupIndex, genomeIndex) > 0 ? 1 : 0)
+  ), 0);
 
   return data.groups.map((g) => {
-    const presentA = presentCount(g, genomesA);
-    const presentB = presentCount(g, genomesB);
+    const presentA = presentCount(g, idxA);
+    const presentB = presentCount(g, idxB);
     const absentA = genomesA.length - presentA;
     const absentB = genomesB.length - presentB;
     const hasZero = presentA === 0 || absentA === 0 || presentB === 0 || absentB === 0;
@@ -93,8 +96,7 @@ export function singletonsPerGenome(data) {
   for (const g of data.groups) {
     if (g.genomesPresentIn !== 1) continue;
     for (const genome of data.genomes) {
-      const cell = g.cells[genome.name];
-      if (cell && cell.copyCount > 0) { byGenome.get(genome.name).push(g); break; }
+      if (copyCountAt(data, g.groupIndex, genome.index) > 0) { byGenome.get(genome.name).push(g); break; }
     }
   }
   return byGenome;

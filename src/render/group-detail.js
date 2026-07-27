@@ -7,6 +7,7 @@
 // pattern match, multi-copy candidates) without navigating away.
 
 import { geneIdListText } from "../../export/group-export.js";
+import { geneIdsByGenomeForGroup } from "../parse/matrix.js";
 import { downloadText } from "./download-util.js";
 
 const FREQ_CLASS_LABELS = { core: "Core", softcore: "Soft-core", shell: "Shell", cloud: "Cloud" };
@@ -20,7 +21,7 @@ function el(tag, attrs, children) {
   return e;
 }
 
-export function renderGroupDetail(container, group) {
+export function renderGroupDetail(container, data, group) {
   container.innerHTML = "";
 
   const header = document.createElement("div");
@@ -77,13 +78,13 @@ export function renderGroupDetail(container, group) {
   const geneSummary = document.createElement("summary");
   geneSummary.textContent = "Constituent gene IDs by genome";
   geneDetails.appendChild(geneSummary);
-  const genomeNames = Object.keys(group.cells).filter((name) => group.cells[name].geneIds && group.cells[name].geneIds.length);
-  if (genomeNames.length) {
+  const genomeGeneIds = geneIdsByGenomeForGroup(data, group.groupIndex);
+  if (genomeGeneIds.length) {
     const list = document.createElement("dl");
     list.className = "detail-dl";
-    for (const name of genomeNames) {
+    for (const [name, geneIds] of genomeGeneIds) {
       list.appendChild(el("dt", { text: name }));
-      list.appendChild(el("dd", { text: group.cells[name].geneIds.join(", ") }));
+      list.appendChild(el("dd", { text: geneIds.join(", ") }));
     }
     geneDetails.appendChild(list);
   } else {
@@ -95,7 +96,7 @@ export function renderGroupDetail(container, group) {
   exportBtn.className = "act";
   exportBtn.style.width = "auto";
   exportBtn.textContent = "Export this group's gene IDs (.txt)";
-  exportBtn.addEventListener("click", () => downloadText(`${group.groupId}-gene-ids.txt`, geneIdListText([group])));
+  exportBtn.addEventListener("click", () => downloadText(`${group.groupId}-gene-ids.txt`, geneIdListText(data, [group])));
   container.appendChild(exportBtn);
 
   const crossLink = document.createElement("div");
@@ -117,9 +118,9 @@ function ensureOverlay() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeGroupDetail(); });
 }
 
-export function openGroupDetail(group) {
+export function openGroupDetail(data, group) {
   ensureOverlay();
-  const closeBtn = renderGroupDetail(cardEl, group);
+  const closeBtn = renderGroupDetail(cardEl, data, group);
   closeBtn.addEventListener("click", closeGroupDetail);
   overlayEl.style.display = "flex";
 }

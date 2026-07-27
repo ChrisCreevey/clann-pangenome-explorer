@@ -1,6 +1,8 @@
 // frequency.js — frequency-class assignment and the frequency spectrum,
 // the single most informative pangenome plot (build brief §6, Phase 2).
 
+import { presenceVector } from "../parse/matrix.js";
+
 export const DEFAULT_THRESHOLDS = { core: 99, softcore: 95, shell: 15 };
 
 /**
@@ -22,15 +24,13 @@ export function assignFrequencyClasses(data, thresholds = DEFAULT_THRESHOLDS) {
     else g.freqClass = "cloud";
   }
 
-  const coreCounts = new Map(data.genomes.map((genome) => [genome.name, 0]));
+  const coreCounts = new Uint32Array(genomeCount);
   for (const g of data.groups) {
     if (g.freqClass !== "core") continue;
-    for (const genome of data.genomes) {
-      const cell = g.cells[genome.name];
-      if (cell && cell.copyCount > 0) coreCounts.set(genome.name, coreCounts.get(genome.name) + 1);
-    }
+    const vector = presenceVector(data, g.groupIndex);
+    for (let i = 0; i < genomeCount; i++) if (vector[i] > 0) coreCounts[i]++;
   }
-  for (const genome of data.genomes) genome.coreGenesPresent = coreCounts.get(genome.name);
+  for (const genome of data.genomes) genome.coreGenesPresent = coreCounts[genome.index];
 
   return data;
 }

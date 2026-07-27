@@ -4,18 +4,17 @@
 // feeds into Clann's multi-copy supertree step.
 
 import { toDelimited } from "./csv-util.js";
+import { allGeneIdsForGroup, geneIdsByGenomeForGroup } from "../src/parse/matrix.js";
 
 /**
  * Flat, one-ID-per-line list of every constituent gene ID across every
  * genome for the given groups — ready to hand to a FASTA/GFF extraction
  * step (build brief §7). Sorted for a deterministic, diffable file.
  */
-export function geneIdListText(groups) {
+export function geneIdListText(data, groups) {
   const ids = new Set();
   for (const group of groups) {
-    for (const genomeName of Object.keys(group.cells)) {
-      for (const geneId of group.cells[genomeName].geneIds || []) ids.add(geneId);
-    }
+    for (const geneId of allGeneIdsForGroup(data, group.groupIndex)) ids.add(geneId);
   }
   return [...ids].sort().join("\n") + (ids.size ? "\n" : "");
 }
@@ -25,13 +24,11 @@ export function geneIdListText(groups) {
  * but keeping the group/genome traceability, for cases where that context
  * matters downstream.
  */
-export function geneIdTableCsv(groups, delimiter = ",") {
+export function geneIdTableCsv(data, groups, delimiter = ",") {
   const rows = [];
   for (const group of groups) {
-    for (const genomeName of Object.keys(group.cells)) {
-      for (const geneId of group.cells[genomeName].geneIds || []) {
-        rows.push([group.groupId, genomeName, geneId]);
-      }
+    for (const [genomeName, geneIds] of geneIdsByGenomeForGroup(data, group.groupIndex)) {
+      for (const geneId of geneIds) rows.push([group.groupId, genomeName, geneId]);
     }
   }
   return toDelimited(["group_id", "genome", "gene_id"], rows, delimiter);

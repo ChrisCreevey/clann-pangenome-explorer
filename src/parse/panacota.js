@@ -9,7 +9,7 @@
 // distinctly in PangenomeData.meta.format, and so a PanACoTA-specific
 // quirk (e.g. a differently named ID column) has one clear place to live.
 
-import { splitDelimited, detectDelimiter, parsePresenceCell } from "./shared.js";
+import { splitDelimited, detectDelimiter } from "./shared.js";
 
 export function looksLikePanacota(header) {
   const first = (header[0] || "").trim().toLowerCase();
@@ -26,11 +26,8 @@ export function parsePanacota(text) {
   const groups = lines.slice(1).map((line) => {
     const row = splitDelimited(line, delimiter);
     const groupId = row[0];
-    const cells = {};
-    genomeNames.forEach((name, i) => {
-      cells[name] = parsePresenceCell(row[i + 1]);
-    });
-    return { groupId, representativeId: groupId, annotation: null, cells };
+    const rawRow = row.slice(1, 1 + genomeNames.length);
+    return { groupId, representativeId: groupId, annotation: null, rawRow };
   });
 
   return { genomeNames, groups };
