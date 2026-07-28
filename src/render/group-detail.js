@@ -3,7 +3,7 @@
 // frequency class, isolate/sequence counts, average copies, and a
 // collapsible list of constituent gene IDs by genome, plus an export
 // button for that group's gene IDs. Shown as a dismissible overlay so it
-// can be opened from a row click in any group table (Filtered groups,
+// can be opened from a row click in any group table (Groups,
 // pattern match, multi-copy candidates) without navigating away.
 
 import { geneIdListText } from "../../export/group-export.js";

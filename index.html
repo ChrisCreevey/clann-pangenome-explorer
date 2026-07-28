@@ -124,7 +124,7 @@
         </div>
         <button class="act" id="fUndo" disabled>Undo ⤺</button>
         <button class="act warn" id="fReset">Reset filters</button>
-        <div class="hint">Applies live to the "Filtered groups" table below.</div>
+        <div class="hint">Applies live to the "Groups" table.</div>
       </details>
 
       <details class="sect" id="rowAnnotation">
@@ -135,7 +135,7 @@
         <div id="annotationSourcesRow" style="display:none">
           <div class="row"><label>Column order</label></div>
           <div id="annotationSourcesList"></div>
-          <div class="hint">Controls the order annotation columns appear in the Filtered groups table, its CSV export, and the group detail card.</div>
+          <div class="hint">Controls the order annotation columns appear in the Groups table, its CSV export, and the group detail card.</div>
         </div>
         <div id="annotationConsensusControls" style="display:none">
           <div class="row"><label for="annMinCount">Min count for consensus</label></div>
@@ -229,7 +229,7 @@
           <p>No. Everything runs client-side in your browser, so your pangenome data never leaves your computer.</p>
 
           <h3>Can I filter and export a subset of groups?</h3>
-          <p>Yes, in the Filters panel: frequency class, presence/sequence counts, average copies per genome, annotation text, and category tag, all applying live with Undo and Reset. Export constituent gene IDs or the filtered table as CSV from the Filtered groups card, the multi-copy/gene-family candidate list, or a filtered CoinFinder pair table as CSV/TSV — all ready for a report or for downstream sequence extraction.</p>
+          <p>Yes, in the Filters panel: frequency class, presence/sequence counts, average copies per genome, annotation text, and category tag, all applying live with Undo and Reset. Export constituent gene IDs or the filtered table as CSV from the Groups card, the multi-copy/gene-family candidate list, or a filtered CoinFinder pair table as CSV/TSV — all ready for a report or for downstream sequence extraction.</p>
 
           <h3>Does it run Roary, Panaroo, PIRATE, PanACoTA, or CoinFinder for me?</h3>
           <p>No. It only explores existing pangenome and CoinFinder output — it does not run any pipeline, does not run BLAST or DIAMOND, and does not build alignments or trees itself. It stages sequence IDs and gene lists for <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a> and <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a> instead.</p>

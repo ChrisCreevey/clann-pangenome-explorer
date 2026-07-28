@@ -1,12 +1,14 @@
 // topfilter-ui.js — Phase 4 UI: the sidebar "Filters" panel (static markup
-// in index.html) plus four main-panel cards: filtered group table, pattern
-// matching, two-group comparison, and singleton/multi-copy detection.
+// in index.html) plus four main-panel cards: the "Groups" table (mounted
+// via mountGroupsCard, right after the frequency-class summary), pattern
+// matching, two-group comparison, and singleton/multi-copy detection
+// (the latter three mounted via mountTopFilterExtras, further down).
 //
 // The sidebar controls are static HTML that persists across file loads
 // (mountExplorer rebuilds the main panel from scratch each time but not
 // the sidebar), so their event listeners are bound exactly once at module
 // load and dispatch through a module-level `active` callback that
-// mountTopFilterCards() reassigns on every mount — this avoids stacking a
+// mountGroupsCard() reassigns on every mount — this avoids stacking a
 // new listener (and a new Undo history) on top of the old one each time a
 // new file is loaded.
 
@@ -67,7 +69,7 @@ function populateTagCheckboxes(data) {
   container.querySelectorAll(".fTagCheckbox").forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
 }
 
-// module-level state, reassigned by mountTopFilterCards() on every mount
+// module-level state, reassigned by mountGroupsCard() on every mount
 let active = null; // { data, groupTableHandle, history: [criteria,...] }
 
 function applyCriteria(criteria, { pushHistory = true } = {}) {
@@ -216,12 +218,16 @@ function renderSingletonMultiCopyCard(panel, data) {
   drawMultiCopy();
 }
 
-/** Mount the Phase 4 cards into `panel` (already attached to the document) for `data`. */
-export function mountTopFilterCards(panel, data) {
+/**
+ * Mount the "Groups" card (the sidebar-filtered group table) into `panel`.
+ * Placed right after the frequency-class summary so the detailed group
+ * list is upfront, ahead of the other summary charts.
+ */
+export function mountGroupsCard(panel, data) {
   bindSidebarOnce();
   populateTagCheckboxes(data);
 
-  const filteredCard = card("Filtered groups");
+  const filteredCard = card("Groups");
   filteredCard.id = "filteredGroupsCard";
   const countEl = document.createElement("div");
   countEl.className = "hint";
@@ -265,7 +271,10 @@ export function mountTopFilterCards(panel, data) {
   crossLink.className = "hint";
   crossLink.innerHTML = `Extract these sequences from your genome FASTA/GFF set, then explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>.`;
   filteredCard.appendChild(crossLink);
+}
 
+/** Mount the remaining Phase 4 cards (pattern matching, two-group comparison, singleton/multi-copy) into `panel`. */
+export function mountTopFilterExtras(panel, data) {
   renderPatternMatchCard(panel, data);
   renderTwoGroupCard(panel, data);
   renderSingletonMultiCopyCard(panel, data);
