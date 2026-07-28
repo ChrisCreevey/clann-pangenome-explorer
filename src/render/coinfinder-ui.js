@@ -113,7 +113,7 @@ function renderPairCard(panel, data, opts = {}) {
   }
 
   let currentPairs = filterPairs(data, data.pairs, baseCriteria());
-  const handle = renderPairTable(tableDiv, currentPairs);
+  const handle = renderPairTable(tableDiv, currentPairs, { annotationSources: data.meta.annotationSources });
   updateCount();
 
   function updateCount() {
@@ -162,8 +162,8 @@ function renderPairCard(panel, data, opts = {}) {
     applyFilters();
   });
 
-  c.querySelector("#pairExportCsv").addEventListener("click", () => downloadText("pangenome-pairs.csv", pairsToDelimited(currentPairs, ","), "text/csv"));
-  c.querySelector("#pairExportTsv").addEventListener("click", () => downloadText("pangenome-pairs.tsv", pairsToDelimited(currentPairs, "\t"), "text/tab-separated-values"));
+  c.querySelector("#pairExportCsv").addEventListener("click", () => downloadText("pangenome-pairs.csv", pairsToDelimited(data, currentPairs, ","), "text/csv"));
+  c.querySelector("#pairExportTsv").addEventListener("click", () => downloadText("pangenome-pairs.tsv", pairsToDelimited(data, currentPairs, "\t"), "text/tab-separated-values"));
 
   const crossLink = document.createElement("div");
   crossLink.className = "hint";

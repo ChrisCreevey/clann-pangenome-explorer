@@ -8,6 +8,7 @@ import { parse } from "../src/parse/index.js";
 import { parseCoinfinderFile } from "../src/parse/coinfinder.js";
 import { resolvePairs } from "../src/analysis/pairs.js";
 import { keywordTag } from "../src/analysis/tags.js";
+import { applyWorkflowA } from "../src/parse/annotation.js";
 import { geneIdListText, geneIdTableCsv, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../export/group-export.js";
 import { pairsToDelimited, pairsToCytoscapeEdgeTable } from "../export/pair-export.js";
 import { escapeField, toDelimited } from "../export/csv-util.js";
@@ -68,13 +69,21 @@ test("MULTICOPY_EXPORT_FILENAME is the placeholder name pending Clann naming con
   assert.equal(MULTICOPY_EXPORT_FILENAME, "multicopy-candidates.csv");
 });
 
-test("pairsToDelimited exports category/freqClass for both sides of each pair", () => {
+test("pairsToDelimited exports category/freqClass/annotation for both sides of each pair, plus one column pair per uploaded annotation source", () => {
   const data = loadRoary();
   keywordTag(data, "AMR", ["beta-lactamase"]);
   const assocRows = parseCoinfinderFile(fixture("coinfinder-associated.csv"), data);
   resolvePairs(data, assocRows, "associated");
-  const csv = pairsToDelimited(data.pairs.filter((p) => p.groupIdA === "groupA" || p.groupIdB === "groupA"));
-  assert.equal(csv, "group_id_a,category_a,freq_class_a,direction,significance,group_id_b,category_b,freq_class_b\ngroupA,AMR,core,associated,0.001,groupD,uncategorised,core\n");
+  const filtered = data.pairs.filter((p) => p.groupIdA === "groupA" || p.groupIdB === "groupA");
+
+  const csvNoAnnotationUpload = pairsToDelimited(data, filtered);
+  assert.equal(csvNoAnnotationUpload, "group_id_a,category_a,freq_class_a,annotation_a,direction,significance,group_id_b,category_b,freq_class_b,annotation_b\ngroupA,AMR,core,beta-lactamase,associated,0.001,groupD,uncategorised,core,transporter\n");
+
+  applyWorkflowA(data, fixture("annotation-workflow-a.csv"));
+  const csvWithAnnotationUpload = pairsToDelimited(data, filtered);
+  const lines = csvWithAnnotationUpload.trim().split("\n");
+  assert.equal(lines[0], "group_id_a,category_a,freq_class_a,annotation_a,direction,significance,group_id_b,category_b,freq_class_b,annotation_b,annotation A,annotation B");
+  assert.equal(lines[1], "groupA,AMR,core,beta-lactamase,associated,0.001,groupD,uncategorised,core,transporter,beta-lactamase (updated),efflux pump");
 });
 
 test("pairsToCytoscapeEdgeTable uses Cytoscape's source/target/interaction column convention and lists both directions together", () => {
