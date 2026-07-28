@@ -10,7 +10,7 @@ import { assignFrequencyClasses, adjustThresholds } from "./analysis/frequency.j
 import { mountExplorer } from "./pangenome.js";
 import { renderColumnMapping } from "./render/column-mapping.js";
 import { decompressIfNeeded } from "./parse/compressed.js";
-import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB } from "./parse/annotation.js";
+import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB, reorderAnnotationSource } from "./parse/annotation.js";
 import { keywordTag, listUploadTag } from "./analysis/tags.js";
 import { parseCoinfinderFile } from "./parse/coinfinder.js";
 import { resolvePairs } from "./analysis/pairs.js";
@@ -52,6 +52,7 @@ function loadData(data, name) {
   lastAnnotationSourceKey = null;
   document.getElementById("annotationStatus").textContent = "No annotation file loaded.";
   document.getElementById("annotationConsensusControls").style.display = "none";
+  document.getElementById("annotationSourcesRow").style.display = "none";
   document.getElementById("tagListStatus").textContent = "";
   document.getElementById("associatedStatus").textContent = "No associated-pairs file loaded.";
   document.getElementById("disassociatedStatus").textContent = "No disassociated-pairs file loaded.";
@@ -225,6 +226,49 @@ const annotationStatus = document.getElementById("annotationStatus");
 const annotationConsensusControls = document.getElementById("annotationConsensusControls");
 document.getElementById("loadAnnotationBtn").addEventListener("click", () => annotationFileInput.click());
 
+const annotationSourcesRow = document.getElementById("annotationSourcesRow");
+const annotationSourcesList = document.getElementById("annotationSourcesList");
+
+/** Render the loaded-annotation-sources list with up/down reorder controls; column order follows data.meta.annotationSources. */
+function renderAnnotationSourcesList() {
+  const sources = (currentData && currentData.meta.annotationSources) || [];
+  annotationSourcesRow.style.display = sources.length > 1 ? "" : "none";
+  annotationSourcesList.innerHTML = "";
+  sources.forEach((source, i) => {
+    const row = document.createElement("div");
+    row.className = "row annotation-source-row";
+    const label = document.createElement("span");
+    label.textContent = source.header;
+    label.style.flex = "1";
+    row.appendChild(label);
+    const upBtn = document.createElement("button");
+    upBtn.className = "act";
+    upBtn.style.width = "auto";
+    upBtn.textContent = "↑";
+    upBtn.title = "Move earlier";
+    upBtn.disabled = i === 0;
+    upBtn.addEventListener("click", () => {
+      reorderAnnotationSource(currentData, source.key, -1);
+      renderAnnotationSourcesList();
+      refreshExplorer();
+    });
+    const downBtn = document.createElement("button");
+    downBtn.className = "act";
+    downBtn.style.width = "auto";
+    downBtn.textContent = "↓";
+    downBtn.title = "Move later";
+    downBtn.disabled = i === sources.length - 1;
+    downBtn.addEventListener("click", () => {
+      reorderAnnotationSource(currentData, source.key, 1);
+      renderAnnotationSourcesList();
+      refreshExplorer();
+    });
+    row.appendChild(upBtn);
+    row.appendChild(downBtn);
+    annotationSourcesList.appendChild(row);
+  });
+}
+
 function applyAnnotationText(text, name, { reuseSourceKey = false } = {}) {
   if (!currentData) return;
   const workflow = detectAnnotationWorkflow(currentData, text);
@@ -250,6 +294,7 @@ function applyAnnotationText(text, name, { reuseSourceKey = false } = {}) {
       (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched gene ID(s).` : ".");
     annotationConsensusControls.style.display = "";
   }
+  renderAnnotationSourcesList();
   refreshExplorer();
 }
 

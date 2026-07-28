@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
-import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB, buildGeneToGroupIndex, annotationSearchText } from "../src/parse/annotation.js";
+import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB, buildGeneToGroupIndex, annotationSearchText, reorderAnnotationSource } from "../src/parse/annotation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
@@ -103,6 +103,22 @@ test("applyWorkflowB rejects a consensus below minPercent, keeping the breakdown
   // breakdown and matched count are still recorded even though no consensus was accepted
   assert.equal(colA.breakdown.length, 2);
   assert.equal(colA.matchedCount, 3);
+});
+
+test("reorderAnnotationSource moves a source earlier or later, no-op past either end", () => {
+  const data = loadRoary();
+  const { key: keyA } = applyWorkflowA(data, fixture("annotation-workflow-a.csv"));
+  const { key: keyB } = applyWorkflowB(data, fixture("annotation-workflow-b.csv"));
+  assert.deepEqual(data.meta.annotationSources.map((s) => s.key), [keyA, keyB]);
+
+  reorderAnnotationSource(data, keyB, -1);
+  assert.deepEqual(data.meta.annotationSources.map((s) => s.key), [keyB, keyA]);
+
+  reorderAnnotationSource(data, keyB, -1); // already first, no-op
+  assert.deepEqual(data.meta.annotationSources.map((s) => s.key), [keyB, keyA]);
+
+  reorderAnnotationSource(data, keyA, 1); // already last, no-op
+  assert.deepEqual(data.meta.annotationSources.map((s) => s.key), [keyB, keyA]);
 });
 
 test("annotationSearchText combines the matrix annotation with every uploaded column", () => {

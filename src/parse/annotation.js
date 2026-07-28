@@ -103,6 +103,20 @@ function setAnnotationColumn(group, key, entry) {
   if (entry.matchedCount != null) group[`annMatched_${key}`] = entry.matchedCount;
 }
 
+/**
+ * Move an annotation source earlier/later in `data.meta.annotationSources`,
+ * which is the order every consumer (Filtered groups table, its CSV
+ * export, group detail card) renders annotation columns in. `direction` is
+ * -1 (move earlier/left) or 1 (move later/right). No-op at either end.
+ */
+export function reorderAnnotationSource(data, key, direction) {
+  const sources = data.meta.annotationSources || [];
+  const index = sources.findIndex((s) => s.key === key);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= sources.length) return;
+  [sources[index], sources[target]] = [sources[target], sources[index]];
+}
+
 /** Combined free-text search surface for a group: the matrix's own annotation plus every uploaded annotation column's value. */
 export function annotationSearchText(data, group) {
   const parts = [group.annotation];

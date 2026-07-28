@@ -132,6 +132,11 @@
         <div class="hint">Workflow A: one row per group. Workflow B: one row per gene (rolled up to a per-group consensus) — detected automatically from the file.</div>
         <button class="act" id="loadAnnotationBtn">Upload annotation file…</button>
         <div class="hint" id="annotationStatus">No annotation file loaded.</div>
+        <div id="annotationSourcesRow" style="display:none">
+          <div class="row"><label>Column order</label></div>
+          <div id="annotationSourcesList"></div>
+          <div class="hint">Controls the order annotation columns appear in the Filtered groups table, its CSV export, and the group detail card.</div>
+        </div>
         <div id="annotationConsensusControls" style="display:none">
           <div class="row"><label for="annMinCount">Min count for consensus</label></div>
           <input type="number" id="annMinCount" min="1" step="1" value="1">
