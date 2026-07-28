@@ -38,9 +38,6 @@ export function renderGroupTable(container, groups, opts = {}) {
   const countLabel = document.createElement("div");
   countLabel.className = "hint";
   wrap.insertBefore(countLabel, table);
-  const truncatedNote = document.createElement("div");
-  truncatedNote.className = "hint";
-  wrap.appendChild(truncatedNote);
 
   function draw() {
     countLabel.textContent = `${current.length} group${current.length === 1 ? "" : "s"}`;
@@ -71,8 +68,7 @@ export function renderGroupTable(container, groups, opts = {}) {
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    const MAX_ROWS = 500; // keep the DOM light for large pangenomes; sorting/filtering still operate on the full set
-    for (const group of sorted.slice(0, MAX_ROWS)) {
+    for (const group of sorted) {
       const tr = document.createElement("tr");
       if (opts.onRowClick) {
         tr.classList.add("row-clickable");
@@ -88,9 +84,6 @@ export function renderGroupTable(container, groups, opts = {}) {
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
-    truncatedNote.textContent = sorted.length > MAX_ROWS
-      ? `Showing the first ${MAX_ROWS} of ${sorted.length} groups (sorted/filtered) — narrow the filters to see more specific rows.`
-      : "";
   }
 
   draw();

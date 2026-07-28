@@ -19,6 +19,14 @@ import { openGroupDetail } from "./group-detail.js";
 import { downloadText } from "./download-util.js";
 import { geneIdListText, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../../export/group-export.js";
 
+function debounce(fn, ms) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
 function card(titleText) {
   const c = document.createElement("div");
   c.className = "card";
@@ -121,11 +129,15 @@ function bindSidebarOnce() {
   sidebarBound = true;
 
   const onChange = () => applyCriteria(readSidebarCriteria());
+  // Typing in a text/number filter re-sorts and fully redraws the Groups
+  // table on every keystroke (no row cap — see group-table.js), so debounce
+  // those specifically; checkbox clicks are already discrete and stay instant.
+  const onChangeDebounced = debounce(onChange, 200);
   document.querySelectorAll(".fFreqClass").forEach((cb) => cb.addEventListener("change", onChange));
-  document.getElementById("fAnnotationText").addEventListener("input", onChange);
-  document.getElementById("fMinGenomes").addEventListener("input", onChange);
-  document.getElementById("fMaxGenomes").addEventListener("input", onChange);
-  document.getElementById("fMinAvgCopies").addEventListener("input", onChange);
+  document.getElementById("fAnnotationText").addEventListener("input", onChangeDebounced);
+  document.getElementById("fMinGenomes").addEventListener("input", onChangeDebounced);
+  document.getElementById("fMaxGenomes").addEventListener("input", onChangeDebounced);
+  document.getElementById("fMinAvgCopies").addEventListener("input", onChangeDebounced);
 
   document.getElementById("fUndo").addEventListener("click", () => {
     if (!active || active.history.length <= 1) return;
