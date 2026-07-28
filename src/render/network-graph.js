@@ -7,9 +7,34 @@
 // the same wheel/drag interaction as the heatmap and Tree Viewer.
 
 import { categoryFor, crossCategoryPairs, sortBySignificance } from "../analysis/pairs.js";
+import { runBusy } from "./busy.js";
 
 const FREQ_CLASS_COLOR = { core: "#0B7268", softcore: "#5F6E33", shell: "#B97E1C", cloud: "#A94B2E" };
 const ASSOC_COLOR = "#0B7268", DISASSOC_COLOR = "#A94B2E";
+
+const ITERATIONS = 200;
+// Benchmarked in Node against this file's actual Map-based repulsion loop
+// (~2e7 pairwise comparisons/sec) — a real browser tab may be somewhat
+// slower. Same measure-and-warn approach as analysis/clustering.js's
+// estimateClusterSeconds(), which this mirrors.
+const BENCHMARKED_PAIR_OPS_PER_SECOND = 2e7;
+// Circuit breakers only, not a UX judgment (see clustering.js's
+// ABSOLUTE_MAX_ITEMS=20000 and its rationale) — layoutNodes does
+// ITERATIONS passes over every node pair, a 200x-larger constant than
+// clustering's single pass, so this sits far lower than clustering's cap.
+// ABSOLUTE_MAX_EDGES is a separate, DOM-element budget: every edge is its
+// own <line>, and that cost doesn't depend on the (possibly small) node
+// count a dense pair set can still produce.
+const ABSOLUTE_MAX_NODES = 5000;
+const ABSOLUTE_MAX_EDGES = 20000;
+// Below this estimate, drawing happens immediately on any filter change,
+// same threshold heatmap.js uses for its own clustering warning.
+const SLOW_WARNING_SECONDS = 1.5;
+
+/** Rough wall-clock estimate for laying out `nodeCount` nodes, for UI hinting only. */
+export function estimateLayoutSeconds(nodeCount, iterations = ITERATIONS) {
+  return ((nodeCount * (nodeCount - 1)) / 2 * iterations) / BENCHMARKED_PAIR_OPS_PER_SECOND;
+}
 
 function categoryColor(categories, category) {
   const idx = categories.indexOf(category);
@@ -17,7 +42,7 @@ function categoryColor(categories, category) {
 }
 
 /** Simple synchronous force-directed layout: repulsion + spring attraction + centering, fixed iterations. */
-function layoutNodes(nodeIds, edges, { width, height, iterations = 200 }) {
+function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS }) {
   const rng = (() => { let s = 42; return () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; })();
   const pos = new Map(nodeIds.map((id) => [id, { x: width / 2 + (rng() - 0.5) * width * 0.8, y: height / 2 + (rng() - 0.5) * height * 0.8 }]));
   const n = nodeIds.length;
@@ -111,10 +136,14 @@ export function renderNetworkGraph(container, data) {
     <label>Max significance <input type="text" id="ngMaxSig" placeholder="no cap" style="width:70px"></label>
     <label><input type="checkbox" id="ngCrossOnly"> Cross-category only</label>
     <label><input type="checkbox" id="ngHighlightTop"> Highlight top 20 by significance</label>
+    <button class="act" id="ngDraw" style="width:auto">Draw network</button>
     <button class="act" id="ngExportSvg" style="width:auto">Export SVG</button>
-    <span class="hint" id="ngNote"></span>
   `;
   container.appendChild(controls);
+  const note = document.createElement("div");
+  note.className = "hint";
+  note.id = "ngNote";
+  container.appendChild(note);
 
   const svgWrap = document.createElement("div");
   svgWrap.className = "network-wrap";
@@ -130,28 +159,76 @@ export function renderNetworkGraph(container, data) {
 
   const allCategories = [...new Set(data.groups.filter((g) => g.tags.length).flatMap((g) => g.tags))].sort();
   const useCategories = allCategories.length > 0;
+  const groupById = new Map(data.groups.map((g) => [g.groupId, g])); // built once, not per node — avoids an O(nodes*groups) Array.find per draw
 
-  function draw() {
+  /** Cheap: apply the direction/significance/cross-category filters, no layout. */
+  function currentSelection() {
     const direction = container.querySelector("#ngDirection").value;
     const maxSigRaw = container.querySelector("#ngMaxSig").value.trim();
     const maxSig = maxSigRaw ? Number(maxSigRaw) : null;
     const crossOnly = container.querySelector("#ngCrossOnly").checked;
-    const highlightTop = container.querySelector("#ngHighlightTop").checked;
 
     let pairs = crossOnly ? crossCategoryPairs(data) : data.pairs;
     if (direction !== "both") pairs = pairs.filter((p) => p.direction === direction);
     if (maxSig != null && !Number.isNaN(maxSig)) pairs = pairs.filter((p) => p.significance != null && p.significance <= maxSig);
 
+    const nodeIds = [...new Set(pairs.flatMap((p) => [p.groupIdA, p.groupIdB]))];
+    const edges = pairs.map((p) => ({ a: p.groupIdA, b: p.groupIdB, pair: p }));
+    return { pairs, nodeIds, edges };
+  }
+
+  const drawBtn = container.querySelector("#ngDraw");
+  let pendingSelection = null; // the selection that would be drawn next
+  let drawn = false; // whether pendingSelection has actually been laid out yet — guards the "Highlight" checkbox from bypassing the slow-draw gate
+
+  /**
+   * Update the pair/node-count note for the current filter selection and
+   * decide whether it's cheap enough to lay out immediately. Laying out a
+   * network is far more expensive than the heatmap's own O(n^2) clustering
+   * (ITERATIONS=200 passes over every node pair, not one), so above
+   * SLOW_WARNING_SECONDS this requires an explicit "Draw network" click
+   * rather than auto-redrawing on every filter change — same honesty
+   * principle as clustering.js/heatmap.js, adapted with an extra opt-in
+   * step because the cost here is high enough that a stray filter tweak
+   * could otherwise hang the tab with no warning at all.
+   */
+  function refreshNote({ auto = true } = {}) {
+    const { pairs, nodeIds, edges } = currentSelection();
+    const tooManyNodes = nodeIds.length > ABSOLUTE_MAX_NODES;
+    const tooManyEdges = edges.length > ABSOLUTE_MAX_EDGES;
+    const estSeconds = estimateLayoutSeconds(nodeIds.length);
+
+    drawn = false;
+
+    if (tooManyNodes || tooManyEdges) {
+      note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups — too many ${tooManyNodes ? `groups (over ${ABSOLUTE_MAX_NODES})` : `pairs (over ${ABSOLUTE_MAX_EDGES})`} to lay out as a network. Narrow the direction, significance, or cross-category filters above, or use the pair table's filters instead.`;
+      drawBtn.disabled = true;
+      scene.innerHTML = "";
+      pendingSelection = null;
+      return;
+    }
+
+    if (estSeconds > SLOW_WARNING_SECONDS) {
+      note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups — laying this out will take roughly ${Math.ceil(estSeconds)}s and freeze the page until it finishes. Click "Draw network" to continue.`;
+      drawBtn.disabled = false;
+      scene.innerHTML = "";
+      pendingSelection = { pairs, nodeIds, edges };
+      return;
+    }
+
+    drawBtn.disabled = false;
+    pendingSelection = { pairs, nodeIds, edges };
+    if (auto) runLayout(pendingSelection);
+  }
+
+  function runLayout({ pairs, nodeIds, edges }) {
+    drawn = true;
+    const highlightTop = container.querySelector("#ngHighlightTop").checked;
     const topSignificantKeys = highlightTop
       ? new Set(sortBySignificance(data.pairs).slice(0, 20).map((p) => `${p.groupIdA}|${p.groupIdB}|${p.direction}`))
       : null;
 
-    container.querySelector("#ngNote").textContent = `${pairs.length} pair${pairs.length === 1 ? "" : "s"} shown`;
-
-    const nodeIds = [...new Set(pairs.flatMap((p) => [p.groupIdA, p.groupIdB]))];
-    const nodesById = new Map(nodeIds.map((id) => [id, data.groups.find((g) => g.groupId === id)]));
-    const edges = pairs.map((p) => ({ a: p.groupIdA, b: p.groupIdB, pair: p }));
-
+    note.textContent = `${pairs.length} pair${pairs.length === 1 ? "" : "s"} shown`;
     scene.innerHTML = "";
     if (!nodeIds.length) return;
 
@@ -174,7 +251,7 @@ export function renderNetworkGraph(container, data) {
     }
 
     for (const id of nodeIds) {
-      const group = nodesById.get(id);
+      const group = groupById.get(id);
       const p = pos.get(id);
       const color = useCategories ? categoryColor(allCategories, categoryFor(group)) : (FREQ_CLASS_COLOR[group.freqClass] || "#999");
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -188,9 +265,19 @@ export function renderNetworkGraph(container, data) {
     }
   }
 
-  container.querySelectorAll("#ngDirection, #ngMaxSig, #ngCrossOnly, #ngHighlightTop").forEach((el) => {
-    el.addEventListener("input", draw);
-    el.addEventListener("change", draw);
+  container.querySelectorAll("#ngDirection, #ngMaxSig, #ngCrossOnly").forEach((el) => {
+    el.addEventListener("input", () => refreshNote());
+    el.addEventListener("change", () => refreshNote());
+  });
+  // Highlighting doesn't change which nodes/edges need laying out, just
+  // how existing ones are drawn — cheap enough to always redraw immediately
+  // using whatever selection is already pending, without re-gating.
+  container.querySelector("#ngHighlightTop").addEventListener("change", () => {
+    if (drawn && pendingSelection) runLayout(pendingSelection);
+  });
+  drawBtn.addEventListener("click", () => {
+    if (!pendingSelection) return;
+    runBusy(() => runLayout(pendingSelection));
   });
 
   // --- pan/zoom, same model as heatmap.js / Tree Viewer ---
@@ -226,6 +313,6 @@ export function renderNetworkGraph(container, data) {
     URL.revokeObjectURL(a.href);
   });
 
-  draw();
-  return { refresh: draw };
+  refreshNote();
+  return { refresh: () => refreshNote() };
 }
