@@ -58,6 +58,21 @@ export function presenceVector(data, groupIndex) {
   return data.presenceMatrix.subarray(groupIndex * n, groupIndex * n + n);
 }
 
+/**
+ * A genome's copy-count vector across every group, for column
+ * clustering. Unlike presenceVector, this can't be a zero-copy view — the
+ * matrix is group-major, so one genome's data is strided (stride =
+ * genomeCount) rather than contiguous — so this materialises a fresh
+ * Uint16Array, O(groupCount) per call.
+ */
+export function genomeVector(data, genomeIndex) {
+  const genomeCount = data.meta.genomeCount;
+  const groupCount = data.groups.length;
+  const vector = new Uint16Array(groupCount);
+  for (let g = 0; g < groupCount; g++) vector[g] = data.presenceMatrix[g * genomeCount + genomeIndex];
+  return vector;
+}
+
 /** Gene IDs for one specific group/genome cell (empty array if none). */
 export function geneIdsAt(data, groupIndex, genomeIndex) {
   const map = data.geneIdsByGroup[groupIndex];

@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
 import { computeAccumulationCurves } from "../src/analysis/accumulation.js";
-import { clusterOrder, groupPresenceVector } from "../src/analysis/clustering.js";
+import { clusterOrder, groupPresenceVector, genomeColumnVector, maxClusterableItems } from "../src/analysis/clustering.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
@@ -55,4 +55,39 @@ test("groupPresenceVector reflects genome membership (copy count) in genome orde
   const data = parse(fixture("roary-small.csv"), { filename: "gene_presence_absence.csv" });
   const groupB = data.groups.find((g) => g.groupId === "groupB");
   assert.deepEqual([...groupPresenceVector(data, groupB.groupIndex)], [1, 1, 0]);
+});
+
+test("genomeColumnVector reflects a genome's copy count across every group, in group order", () => {
+  const data = parse(fixture("roary-small.csv"), { filename: "gene_presence_absence.csv" });
+  const g1 = data.genomes.find((g) => g.name === "G1");
+  // roary-small.csv groups in file order: groupA(1), groupB(1), groupC(0), groupD(2, semicolon-joined multi-copy)
+  assert.deepEqual([...genomeColumnVector(data, g1.index)], [1, 1, 0, 2]);
+});
+
+test("clusterOrder falls back to identity order once item count exceeds the vector-length-aware cap", () => {
+  const longVector = new Array(1000).fill(0); // maxClusterableItems(1000) is small
+  const cap = maxClusterableItems(1000);
+  const items = Array.from({ length: cap + 1 }, () => longVector);
+  const order = clusterOrder(items);
+  assert.deepEqual(order, items.map((_, i) => i)); // identity — too many items to cluster at this vector length
+});
+
+test("maxClusterableItems shrinks as vector length grows, and grows as it shrinks", () => {
+  const capForLarge = maxClusterableItems(20000);
+  const capForSmall = maxClusterableItems(500);
+  assert.ok(capForLarge < capForSmall);
+});
+
+test("clusterOrder with the euclidean metric groups similar copy-number vectors together, distinguishing magnitude that jaccard would treat as identical", () => {
+  const items = [
+    [0, 0, 5], // far from the "1 copy" cluster below despite all being non-zero in the same position
+    [1, 0, 0],
+    [1, 1, 0],
+    [0, 0, 6],
+  ];
+  const order = clusterOrder(items, { metric: "euclidean" });
+  const pos = (i) => order.indexOf(i);
+  // items 0 and 3 (copy numbers 5 and 6) should end up adjacent; jaccard would
+  // have seen items 0/1/2 as more similar (all just "non-zero somewhere").
+  assert.ok(Math.abs(pos(0) - pos(3)) === 1);
 });

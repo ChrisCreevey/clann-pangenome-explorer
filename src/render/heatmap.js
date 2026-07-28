@@ -1,12 +1,18 @@
 // heatmap.js — presence/absence heatmap (build brief §6, Phase 3). Rows are
-// gene groups, columns are genomes. Canvas-rendered for performance at
-// hundreds of genomes x thousands of groups: presence data is rasterised
-// once into an off-screen canvas at one pixel per cell, then the visible
-// canvas just redraws that image under a pan/zoom transform (wheel to
-// zoom, drag to pan — same interaction model as Tree Viewer's SVG canvas),
-// so re-sorting is the only thing that re-rasterises.
+// gene groups, columns are genomes; both can be sorted by frequency/original
+// order or by similarity clustering independently. Canvas-rendered for
+// performance at hundreds of genomes x thousands of groups: presence data
+// is rasterised once into an off-screen canvas at one pixel per cell
+// (via colOrder/rowOrder index indirection, so reordering either axis is
+// just a remap, not a data copy), then the visible canvas just redraws
+// that image under a pan/zoom transform (wheel to zoom, drag to pan —
+// same interaction model as Tree Viewer's SVG canvas), so re-sorting is
+// the only thing that re-rasterises. See analysis/clustering.js for why
+// column clustering gets a lower item cap than row clustering typically
+// does at the same genome count — it costs O(genomeCount^2 * groupCount),
+// and groupCount is usually the larger axis.
 
-import { clusterOrder, groupPresenceVector, MAX_CLUSTER_ITEMS } from "../analysis/clustering.js";
+import { clusterOrder, groupPresenceVector, genomeColumnVector, maxClusterableItems } from "../analysis/clustering.js";
 import { presenceVector } from "../parse/matrix.js";
 
 const FREQ_CLASS_RGB = {
@@ -47,9 +53,16 @@ export function renderHeatmap(container, data) {
         <option value="cluster">Similarity clustering</option>
       </select>
     </label>
+    <label>Sort columns by
+      <select id="hmSortCol">
+        <option value="original">Original order</option>
+        <option value="cluster">Similarity clustering</option>
+      </select>
+    </label>
     <button class="act" id="hmExportPng" style="width:auto">Export PNG</button>
     <button class="act" id="hmExportSvg" style="width:auto">Export SVG</button>
     <span class="hint" id="hmNote"></span>
+    <span class="hint" id="hmNoteCol"></span>
   `;
   container.appendChild(controls);
 
@@ -62,6 +75,7 @@ export function renderHeatmap(container, data) {
   const ctx = canvas.getContext("2d");
 
   let rowOrder = groups.map((_, i) => i);
+  let colOrder = data.genomes.map((g) => g.index);
   let offscreen = null;
   let view = { k: 1, x: 0, y: 0 };
 
@@ -83,7 +97,7 @@ export function renderHeatmap(container, data) {
       const [pr, pg, pb] = rowColor(group);
       const vector = presenceVector(data, group.groupIndex);
       for (let col = 0; col < w; col++) {
-        const present = vector[col] > 0;
+        const present = vector[colOrder[col]] > 0;
         const [r, g, b] = present ? [pr, pg, pb] : EMPTY_RGB;
         const idx = (row * w + col) * 4;
         buf[idx] = r; buf[idx + 1] = g; buf[idx + 2] = b; buf[idx + 3] = 255;
@@ -122,16 +136,36 @@ export function renderHeatmap(container, data) {
   function applySort(mode) {
     if (mode === "cluster") {
       const vectors = groups.map((g) => groupPresenceVector(data, g.groupIndex));
-      rowOrder = clusterOrder(vectors);
+      rowOrder = clusterOrder(vectors, { metric: "jaccard" });
       container.querySelector("#hmNote").textContent =
-        groups.length > MAX_CLUSTER_ITEMS
-          ? `Too many groups (${groups.length}) to cluster — showing default order instead.`
+        groups.length > maxClusterableItems(genomeCount)
+          ? `Too many groups (${groups.length}) to cluster at this genome count — showing default order instead.`
           : `${groups.length} groups ordered by presence similarity.`;
     } else {
       rowOrder = groups
         .map((g, i) => i)
         .sort((a, b) => groups[b].genomesPresentIn - groups[a].genomesPresentIn);
       container.querySelector("#hmNote").textContent = "";
+    }
+    rasterise();
+    fitToWidth();
+    draw();
+  }
+
+  function applyColumnSort(mode) {
+    if (mode === "cluster") {
+      // Copy number (not just presence) — Euclidean distance is more
+      // informative here than Jaccard, which would treat 1 copy and 5
+      // copies of the same gene as identical.
+      const vectors = data.genomes.map((g) => genomeColumnVector(data, g.index));
+      colOrder = clusterOrder(vectors, { metric: "euclidean" });
+      container.querySelector("#hmNoteCol").textContent =
+        genomeCount > maxClusterableItems(groups.length)
+          ? `Too many genomes (${genomeCount}) to cluster at this group count — showing original order instead.`
+          : `${genomeCount} genomes ordered by copy-number similarity.`;
+    } else {
+      colOrder = data.genomes.map((g) => g.index);
+      container.querySelector("#hmNoteCol").textContent = "";
     }
     rasterise();
     fitToWidth();
@@ -166,6 +200,7 @@ export function renderHeatmap(container, data) {
   canvas.addEventListener("dblclick", () => { fitToWidth(); draw(); });
 
   container.querySelector("#hmSort").addEventListener("change", (e) => applySort(e.target.value));
+  container.querySelector("#hmSortCol").addEventListener("change", (e) => applyColumnSort(e.target.value));
 
   container.querySelector("#hmExportPng").addEventListener("click", () => {
     // Upscale from the 1px-per-cell raster so the exported image isn't illegibly tiny.
@@ -196,7 +231,7 @@ export function renderHeatmap(container, data) {
       const [r, g, b] = rowColor(group);
       const vector = presenceVector(data, group.groupIndex);
       for (let col = 0; col < genomeCount; col++) {
-        const present = vector[col] > 0;
+        const present = vector[colOrder[col]] > 0;
         const color = present ? `rgb(${r},${g},${b})` : `rgb(${EMPTY_RGB.join(",")})`;
         rects.push(`<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="${color}"/>`);
       }
@@ -218,6 +253,10 @@ export function renderHeatmap(container, data) {
     setSort(mode) {
       container.querySelector("#hmSort").value = mode;
       applySort(mode);
+    },
+    setSortCol(mode) {
+      container.querySelector("#hmSortCol").value = mode;
+      applyColumnSort(mode);
     },
   };
 }
