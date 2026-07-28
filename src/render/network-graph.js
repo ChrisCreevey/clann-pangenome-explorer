@@ -72,12 +72,100 @@ function categoryColor(categories, category) {
   return `hsl(${(idx * 47) % 360} 55% 45%)`;
 }
 
-/** Simple synchronous force-directed layout: repulsion + spring attraction + centering, fixed iterations. */
+/**
+ * Node degree (edge count) within `edges` — used both as a centrality
+ * proxy for node sizing and to build connected components. True
+ * betweenness centrality is O(V*E) (Brandes' algorithm) — too expensive
+ * to run synchronously on the main thread alongside an already-O(n^2)
+ * layout, so degree is used instead: cheap (O(edges)), and for "which
+ * nodes are hubs" it's a reasonable stand-in.
+ */
+export function degreeOf(nodeIds, edges) {
+  const degree = new Map(nodeIds.map((id) => [id, 0]));
+  for (const e of edges) {
+    degree.set(e.a, (degree.get(e.a) || 0) + 1);
+    degree.set(e.b, (degree.get(e.b) || 0) + 1);
+  }
+  return degree;
+}
+
+/**
+ * Connected components over ASSOCIATED edges only — disassociation means
+ * "these don't tend to co-occur," so it shouldn't be what defines a
+ * cluster's membership, only (below, in layoutNodes) an extra force
+ * pushing disassociated pairs apart. A node touched only by disassociated
+ * edges ends up in its own singleton component, which is the right
+ * outcome: it isn't part of any associated cluster.
+ */
+export function connectedComponents(nodeIds, edges) {
+  const adj = new Map(nodeIds.map((id) => [id, []]));
+  for (const e of edges) {
+    if (e.pair.direction !== "associated") continue;
+    adj.get(e.a).push(e.b);
+    adj.get(e.b).push(e.a);
+  }
+  const compOf = new Map();
+  let compCount = 0;
+  for (const start of nodeIds) {
+    if (compOf.has(start)) continue;
+    const compId = compCount++;
+    const stack = [start];
+    compOf.set(start, compId);
+    while (stack.length) {
+      const cur = stack.pop();
+      for (const nb of adj.get(cur)) {
+        if (!compOf.has(nb)) { compOf.set(nb, compId); stack.push(nb); }
+      }
+    }
+  }
+  return { compOf, compCount };
+}
+
+/** A grid cell (roughly proportional to component size) for each component, largest first, so bigger clusters get more room. */
+export function componentCenters(compCount, compOf, width, height) {
+  const sizes = new Array(compCount).fill(0);
+  for (const compId of compOf.values()) sizes[compId]++;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(compCount)));
+  const rows = Math.max(1, Math.ceil(compCount / cols));
+  const cellW = width / cols, cellH = height / rows;
+  const order = [...sizes.keys()].sort((a, b) => sizes[b] - sizes[a]);
+  const centers = new Array(compCount);
+  order.forEach((compId, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    centers[compId] = { x: cellW * (col + 0.5), y: cellH * (row + 0.5) };
+  });
+  return centers;
+}
+
+// Disassociated edges push apart on top of the generic pairwise repulsion
+// every node pair already gets — this factor is how much *extra* push a
+// specifically-disassociated pair gets beyond that baseline, so they read
+// as visually further apart than two merely-unrelated nodes.
+const DISASSOCIATION_REPULSION_FACTOR = 1.5;
+
+/**
+ * Force-directed layout: repulsion (every node pair) + direction-aware
+ * springs (associated edges pull together, disassociated edges push
+ * apart) + a centering pull toward each node's own connected-component
+ * center rather than one shared canvas center. That last part is what
+ * actually separates distinct clusters — pulling every node toward the
+ * same global center, as a single unified simulation naively does,
+ * guarantees everything collapses into one indistinguishable "ball"
+ * once repulsion and attraction reach equilibrium, regardless of how
+ * the connectivity is structured.
+ */
 function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS }) {
   const rng = (() => { let s = 42; return () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; })();
-  const pos = new Map(nodeIds.map((id) => [id, { x: width / 2 + (rng() - 0.5) * width * 0.8, y: height / 2 + (rng() - 0.5) * height * 0.8 }]));
   const n = nodeIds.length;
-  if (n <= 1) return pos;
+  if (n <= 1) return new Map(nodeIds.map((id) => [id, { x: width / 2, y: height / 2 }]));
+
+  const { compOf, compCount } = connectedComponents(nodeIds, edges);
+  const centers = componentCenters(compCount, compOf, width, height);
+  const jitter = Math.min(width, height) / Math.max(4, Math.sqrt(compCount));
+  const pos = new Map(nodeIds.map((id) => {
+    const c = centers[compOf.get(id)];
+    return [id, { x: c.x + (rng() - 0.5) * jitter, y: c.y + (rng() - 0.5) * jitter }];
+  }));
 
   const k = Math.sqrt((width * height) / n); // ideal spring length
   for (let iter = 0; iter < iterations; iter++) {
@@ -95,18 +183,25 @@ function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS })
         disp.get(nodeIds[j]).x -= dx; disp.get(nodeIds[j]).y -= dy;
       }
     }
-    // attraction along edges
+    // direction-aware springs along edges
     for (const e of edges) {
       const a = pos.get(e.a), b = pos.get(e.b);
       if (!a || !b) continue;
       let dx = a.x - b.x, dy = a.y - b.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-      const force = (dist * dist) / k;
-      dx = (dx / dist) * force; dy = (dy / dist) * force;
-      disp.get(e.a).x -= dx; disp.get(e.a).y -= dy;
-      disp.get(e.b).x += dx; disp.get(e.b).y += dy;
+      if (e.pair.direction === "associated") {
+        const force = (dist * dist) / k; // Fruchterman-Reingold spring: pulls harder the further apart they are
+        dx = (dx / dist) * force; dy = (dy / dist) * force;
+        disp.get(e.a).x -= dx; disp.get(e.a).y -= dy;
+        disp.get(e.b).x += dx; disp.get(e.b).y += dy;
+      } else {
+        const force = ((k * k) / dist) * DISASSOCIATION_REPULSION_FACTOR; // extra repulsion-shaped push: stronger the closer they are
+        dx = (dx / dist) * force; dy = (dy / dist) * force;
+        disp.get(e.a).x += dx; disp.get(e.a).y += dy;
+        disp.get(e.b).x -= dx; disp.get(e.b).y -= dy;
+      }
     }
-    // apply displacement (capped) + mild centering pull
+    // apply displacement (capped) + mild pull toward this node's own component center
     const temp = width * 0.1 * (1 - iter / iterations);
     for (const id of nodeIds) {
       const d = disp.get(id);
@@ -115,8 +210,9 @@ function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS })
       const p = pos.get(id);
       p.x += (d.x / dist) * capped;
       p.y += (d.y / dist) * capped;
-      p.x += (width / 2 - p.x) * 0.01;
-      p.y += (height / 2 - p.y) * 0.01;
+      const c = centers[compOf.get(id)];
+      p.x += (c.x - p.x) * 0.01;
+      p.y += (c.y - p.y) * 0.01;
     }
   }
 
@@ -178,6 +274,10 @@ export function renderNetworkGraph(container, data, opts = {}) {
     <button class="act" id="ngExportEdges" style="width:auto">Export edge table (.csv)</button>
   `;
   container.appendChild(controls);
+  const layoutHint = document.createElement("div");
+  layoutHint.className = "hint";
+  layoutHint.textContent = "Layout: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Node size reflects degree (a cheap centrality proxy) within the drawn selection.";
+  container.appendChild(layoutHint);
   const note = document.createElement("div");
   note.className = "hint";
   note.id = "ngNote";
@@ -302,6 +402,7 @@ export function renderNetworkGraph(container, data, opts = {}) {
     if (!nodeIds.length) return;
 
     const pos = layoutNodes(nodeIds, edges, { width, height });
+    const degree = degreeOf(nodeIds, edges); // centrality proxy (see layoutNodes' doc comment) — also drives node radius below
 
     for (const e of edges) {
       const a = pos.get(e.a), b = pos.get(e.b);
@@ -323,12 +424,13 @@ export function renderNetworkGraph(container, data, opts = {}) {
       const group = groupById.get(id);
       const p = pos.get(id);
       const color = useCategories ? categoryColor(allCategories, categoryFor(group)) : (FREQ_CLASS_COLOR[group.freqClass] || "#999");
+      const radius = 4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5); // degree (centrality proxy) -> radius, capped so a hub doesn't dominate the canvas
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", 6);
+      circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", radius);
       circle.setAttribute("fill", color);
       circle.setAttribute("stroke", "#fff"); circle.setAttribute("stroke-width", "1");
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      title.textContent = `${group.groupId}${group.annotation ? ` — ${group.annotation}` : ""} (${useCategories ? categoryFor(group) : group.freqClass})`;
+      title.textContent = `${group.groupId}${group.annotation ? ` — ${group.annotation}` : ""} (${useCategories ? categoryFor(group) : group.freqClass}, degree ${degree.get(id) || 0})`;
       circle.appendChild(title);
       scene.appendChild(circle);
     }
