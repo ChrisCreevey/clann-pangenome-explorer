@@ -166,6 +166,16 @@ export function applyWorkflowA(data, text, opts = {}) {
  * annotated genes) — otherwise the group's value is left blank but its
  * breakdown and matched count are still recorded so the disagreement stays
  * visible rather than silently dropped.
+ *
+ * Rows are deduplicated by gene ID before tallying: some annotation tools
+ * (e.g. a defense-system finder reporting one locus under two overlapping
+ * system calls) emit more than one row for the same gene. Without
+ * deduplication that gene would cast more than one vote toward its group's
+ * consensus, and the matched-genes count could exceed the group's actual
+ * sequence count. The first row seen for a given gene ID wins; later rows
+ * for that same ID are ignored (not counted as unmatched, since the ID
+ * itself did match — it's just redundant).
+ *
  * Returns { matched, unmatchedIds, acceptedCount, rejectedCount, key, header }.
  */
 export function applyWorkflowB(data, text, opts = {}) {
@@ -178,16 +188,20 @@ export function applyWorkflowB(data, text, opts = {}) {
   const geneIndex = buildGeneToGroupIndex(data);
   const byGroupId = new Map(data.groups.map((g) => [g.groupId, g]));
 
-  const tally = new Map(); // groupId -> Map(annotation -> count)
+  const annotationByGeneId = new Map(); // geneId -> annotation, first occurrence wins
   const unmatchedIds = [];
-  let matched = 0;
-
   for (const row of rows) {
     const geneId = row[idCol];
+    if (!geneIndex.has(geneId)) { unmatchedIds.push(geneId); continue; }
+    if (!annotationByGeneId.has(geneId)) {
+      annotationByGeneId.set(geneId, row[annotationCol] || "(no annotation)");
+    }
+  }
+  const matched = annotationByGeneId.size;
+
+  const tally = new Map(); // groupId -> Map(annotation -> count)
+  for (const [geneId, annotation] of annotationByGeneId) {
     const groupId = geneIndex.get(geneId);
-    if (!groupId) { unmatchedIds.push(geneId); continue; }
-    matched++;
-    const annotation = row[annotationCol] || "(no annotation)";
     if (!tally.has(groupId)) tally.set(groupId, new Map());
     const counts = tally.get(groupId);
     counts.set(annotation, (counts.get(annotation) || 0) + 1);

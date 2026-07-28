@@ -105,6 +105,33 @@ test("applyWorkflowB rejects a consensus below minPercent, keeping the breakdown
   assert.equal(colA.matchedCount, 3);
 });
 
+test("applyWorkflowB dedupes rows by gene ID so a repeated locus only casts one consensus vote", () => {
+  const data = loadRoary();
+  // groupA_1 appears twice (as a tool reporting the same gene under two
+  // system calls might) — the second row must not inflate matchedCount
+  // past groupA's actual sequence count (3), nor cast a second vote.
+  const text = [
+    "gene_id,annotation",
+    "groupA_1,beta-lactamase",
+    "groupA_1,beta-lactamase (duplicate row)",
+    "groupA_2,beta-lactamase",
+    "groupA_3,hypothetical protein",
+  ].join("\n");
+  const { matched, unmatchedIds, key } = applyWorkflowB(data, text, { minCount: 1, minPercent: 50 });
+  assert.equal(matched, 3); // 3 distinct gene IDs, not 4 rows
+  assert.deepEqual(unmatchedIds, []);
+
+  const groupA = data.groups.find((g) => g.groupId === "groupA");
+  const colA = groupA.annotationColumns[key];
+  assert.equal(colA.matchedCount, 3); // matches sequencesTotal, not the row count
+  assert.equal(colA.matchedCount, groupA.sequencesTotal);
+  assert.equal(colA.value, "beta-lactamase");
+  // the duplicate row's annotation never entered the tally
+  const betaEntry = colA.breakdown.find((b) => b.annotation === "beta-lactamase");
+  assert.equal(betaEntry.count, 2);
+  assert.equal(colA.breakdown.find((b) => b.annotation === "beta-lactamase (duplicate row)"), undefined);
+});
+
 test("reorderAnnotationSource moves a source earlier or later, no-op past either end", () => {
   const data = loadRoary();
   const { key: keyA } = applyWorkflowA(data, fixture("annotation-workflow-a.csv"));
