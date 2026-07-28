@@ -18,6 +18,7 @@ import { renderGroupTable, DEFAULT_COLS } from "./group-table.js";
 import { openGroupDetail } from "./group-detail.js";
 import { downloadText } from "./download-util.js";
 import { geneIdListText, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../../export/group-export.js";
+import { runBusy } from "./busy.js";
 
 function debounce(fn, ms) {
   let t;
@@ -109,12 +110,19 @@ let active = null; // { data, groupTableHandle, history: [criteria,...] }
 function applyCriteria(criteria, { pushHistory = true } = {}) {
   if (!active) return;
   if (pushHistory) active.history.push(criteria);
-  active.currentGroups = filterGroups(active.data, criteria);
-  active.groupTableHandle.setGroups(active.currentGroups);
-  active.onFilterChange?.(active.currentGroups);
-  document.getElementById("fUndo").disabled = active.history.length <= 1;
-  updateFilteredCount();
-  active.filteredCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // filterGroups() is O(groups), and setGroups()/onFilterChange() (which
+  // also drives the heatmap's row subset) each re-sort and redraw their
+  // whole table/canvas — cheap for a typical study, but for a very large
+  // pangenome this can take real wall-clock time, so run it under the busy
+  // spinner rather than leaving a filter checkbox looking unresponsive.
+  runBusy(() => {
+    active.currentGroups = filterGroups(active.data, criteria);
+    active.groupTableHandle.setGroups(active.currentGroups);
+    active.onFilterChange?.(active.currentGroups);
+    document.getElementById("fUndo").disabled = active.history.length <= 1;
+    updateFilteredCount();
+    active.filteredCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function updateFilteredCount() {

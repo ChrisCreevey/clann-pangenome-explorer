@@ -269,29 +269,42 @@ function renderAnnotationSourcesList() {
   });
 }
 
-function applyAnnotationText(text, name, { reuseSourceKey = false } = {}) {
+async function applyAnnotationText(text, name, { reuseSourceKey = false } = {}) {
   if (!currentData) return;
-  const workflow = detectAnnotationWorkflow(currentData, text);
-  if (workflow === "unknown") {
+  const sourceKey = reuseSourceKey ? lastAnnotationSourceKey || undefined : undefined;
+
+  // detectAnnotationWorkflow() parses the whole file, and applyWorkflowA/B
+  // then tallies every matched row — cheap for a typical study, but for an
+  // annotation file with hundreds of thousands of rows (Workflow B: one row
+  // per gene across every genome) this can take real wall-clock time, so
+  // run it under the busy spinner rather than leaving the upload/re-apply
+  // button looking unresponsive.
+  const result = await runBusy(() => {
+    const workflow = detectAnnotationWorkflow(currentData, text);
+    if (workflow === "unknown") return { workflow };
+    if (workflow === "A") {
+      return { workflow, ...applyWorkflowA(currentData, text, { sourceKey }) };
+    }
+    const minCount = Number(document.getElementById("annMinCount").value) || 1;
+    const minPercent = Number(document.getElementById("annMinPercent").value) || 50;
+    return { workflow, ...applyWorkflowB(currentData, text, { minCount, minPercent, sourceKey }) };
+  });
+
+  if (result.workflow === "unknown") {
     showError(`Couldn't tell whether ${name} is one row per group or one row per gene — check its ID column matches your group IDs or constituent gene IDs.`);
     return;
   }
+
   lastAnnotationText = text;
-  const sourceKey = reuseSourceKey ? lastAnnotationSourceKey || undefined : undefined;
-  if (workflow === "A") {
-    const { matched, unmatchedIds, key, header } = applyWorkflowA(currentData, text, { sourceKey });
-    lastAnnotationSourceKey = key;
-    annotationStatus.textContent = `${name}: Workflow A — added column "${header}", ${matched} group${matched === 1 ? "" : "s"} annotated` +
-      (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched ID(s).` : ".");
+  lastAnnotationSourceKey = result.key;
+  if (result.workflow === "A") {
+    annotationStatus.textContent = `${name}: Workflow A — added column "${result.header}", ${result.matched} group${result.matched === 1 ? "" : "s"} annotated` +
+      (result.unmatchedIds.length ? `, ${result.unmatchedIds.length} unmatched ID(s).` : ".");
     annotationConsensusControls.style.display = "none";
   } else {
-    const minCount = Number(document.getElementById("annMinCount").value) || 1;
-    const minPercent = Number(document.getElementById("annMinPercent").value) || 50;
-    const { matched, unmatchedIds, acceptedCount, rejectedCount, key, header } = applyWorkflowB(currentData, text, { minCount, minPercent, sourceKey });
-    lastAnnotationSourceKey = key;
-    annotationStatus.textContent = `${name}: Workflow B — added column "${header}", ${matched} gene(s) matched, ${acceptedCount} group(s) reached consensus, ` +
-      `${rejectedCount} below threshold (breakdown still visible)` +
-      (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched gene ID(s).` : ".");
+    annotationStatus.textContent = `${name}: Workflow B — added column "${result.header}", ${result.matched} gene(s) matched, ${result.acceptedCount} group(s) reached consensus, ` +
+      `${result.rejectedCount} below threshold (breakdown still visible)` +
+      (result.unmatchedIds.length ? `, ${result.unmatchedIds.length} unmatched gene ID(s).` : ".");
     annotationConsensusControls.style.display = "";
   }
   renderAnnotationSourcesList();
@@ -305,13 +318,14 @@ annotationFileInput.addEventListener("change", async (e) => {
   let text, name;
   try { ({ text, filename: name } = await readTextFile(f)); }
   catch (err) { showError(`Couldn't read ${f.name}: ${err && err.message ? err.message : err}`); return; }
-  try { applyAnnotationText(text, name); }
+  try { await applyAnnotationText(text, name); }
   catch (err) { showError(`Couldn't parse ${name} as an annotation file: ${err && err.message ? err.message : err}`); }
 });
 
-document.getElementById("annReapply").addEventListener("click", () => {
+document.getElementById("annReapply").addEventListener("click", async () => {
   if (!lastAnnotationText) return;
-  applyAnnotationText(lastAnnotationText, "annotation file", { reuseSourceKey: true });
+  try { await applyAnnotationText(lastAnnotationText, "annotation file", { reuseSourceKey: true }); }
+  catch (err) { showError(`Couldn't re-apply the annotation file: ${err && err.message ? err.message : err}`); }
 });
 
 // --- category tagging: keyword match or two-column list upload ---
