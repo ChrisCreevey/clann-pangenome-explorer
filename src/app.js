@@ -362,8 +362,15 @@ function wireCoinfinderUpload(inputId, btnId, statusId, direction) {
     try { ({ text, filename: name } = await readTextFile(f)); }
     catch (err) { showError(`Couldn't read ${f.name}: ${err && err.message ? err.message : err}`); return; }
     try {
-      const rows = parseCoinfinderFile(text, currentData);
-      const { matched, unmatched } = resolvePairs(currentData, rows, direction);
+      // Parsing (whole-file split + row objects) and resolving (Map-lookup
+      // join against every loaded group) are both synchronous and, for a
+      // CoinFinder file in the hundreds of thousands to millions of lines,
+      // can take real wall-clock time — runBusy shows the header spinner
+      // for the duration instead of the tab silently appearing to hang.
+      const { matched, unmatched } = await runBusy(() => {
+        const rows = parseCoinfinderFile(text, currentData);
+        return resolvePairs(currentData, rows, direction);
+      });
       status.textContent = `${name}: ${matched} pair(s) resolved` + (unmatched ? `, ${unmatched} unmatched.` : ".");
       refreshExplorer();
     } catch (err) {
