@@ -92,13 +92,19 @@ export function sortBySignificance(pairs) {
  * 'associated'/'disassociated' (an array, so both can be selected).
  * `maxSignificance` drops pairs with no significance value or a value
  * above the threshold. `crossCategoryOnly` keeps only pairs whose two
- * sides fall in different categories.
+ * sides fall in different categories. `groupIds` (a Set of group IDs —
+ * typically the sidebar-filtered Groups selection) requires BOTH sides
+ * of the pair to be in the set, not either: this is the link between the
+ * Groups filter and every pair-derived view (pair table, network graph),
+ * always applied, so "an association" only ever means one strictly
+ * within whatever the Groups filter currently shows.
  */
 export function filterPairs(data, pairs, criteria = {}) {
-  const { direction, maxSignificance, crossCategoryOnly, annotationText, tags } = criteria;
+  const { direction, maxSignificance, crossCategoryOnly, annotationText, tags, groupIds } = criteria;
   const needle = annotationText ? annotationText.trim().toLowerCase() : null;
 
   return pairs.filter((pair) => {
+    if (groupIds && (!groupIds.has(pair.groupIdA) || !groupIds.has(pair.groupIdB))) return false;
     if (direction && direction.length && !direction.includes(pair.direction)) return false;
     if (maxSignificance != null && (pair.significance == null || pair.significance > maxSignificance)) return false;
     if (crossCategoryOnly && categoryFor(pair.resolvedA) === categoryFor(pair.resolvedB)) return false;
@@ -106,4 +112,28 @@ export function filterPairs(data, pairs, criteria = {}) {
     if (tags && tags.length && !tags.some((t) => pair.resolvedA.tags.includes(t) || pair.resolvedB.tags.includes(t))) return false;
     return true;
   });
+}
+
+/**
+ * Per-group rollup of association/disassociation counts within `pairs`
+ * (already filtered/resolved) — one row per group appearing in at least
+ * one of those pairs, carrying every field the group itself has (its
+ * matrix annotation, every uploaded annotation column, tags, frequency
+ * class, isolate/sequence counts — same shape the Groups table already
+ * uses, so the same dynamic-column logic can render or export it) plus
+ * associated/disassociated/total counts computed from `pairs`. This is
+ * "annotations mapped to associations" as a browsable, exportable table,
+ * sorted most-connected first.
+ */
+export function groupAssociationSummary(pairs) {
+  const rows = new Map(); // groupId -> { group, associated, disassociated }
+  for (const pair of pairs) {
+    for (const group of [pair.resolvedA, pair.resolvedB]) {
+      if (!rows.has(group.groupId)) rows.set(group.groupId, { group, associated: 0, disassociated: 0 });
+      rows.get(group.groupId)[pair.direction === "associated" ? "associated" : "disassociated"]++;
+    }
+  }
+  return [...rows.values()]
+    .map(({ group, associated, disassociated }) => ({ ...group, associated, disassociated, total: associated + disassociated }))
+    .sort((a, b) => b.total - a.total);
 }

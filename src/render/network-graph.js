@@ -6,7 +6,7 @@
 // lays the graph out (no dependency), then it's pannable/zoomable with
 // the same wheel/drag interaction as the heatmap and Tree Viewer.
 
-import { categoryFor, crossCategoryPairs, sortBySignificance } from "../analysis/pairs.js";
+import { categoryFor, filterPairs, sortBySignificance } from "../analysis/pairs.js";
 import { runBusy } from "./busy.js";
 import { downloadText } from "./download-util.js";
 import { pairsToCytoscapeEdgeTable } from "../../export/pair-export.js";
@@ -143,7 +143,7 @@ function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS })
  * refresh() so the pair table's category/direction filters can drive the
  * same graph if wired together later.
  */
-export function renderNetworkGraph(container, data) {
+export function renderNetworkGraph(container, data, opts = {}) {
   container.innerHTML = "";
 
   if (!data.pairs.length) {
@@ -151,8 +151,12 @@ export function renderNetworkGraph(container, data) {
     note.className = "empty-note";
     note.textContent = "No resolved pairs to graph — load CoinFinder association/disassociation files first.";
     container.appendChild(note);
-    return { refresh() {} };
+    return { refresh() {}, setGroupFilter() {} };
   }
+
+  // groupIds (from the sidebar Groups filter, always applied — both sides
+  // of a pair must be in the set) — null means unrestricted.
+  let groupIdFilter = opts.groupIds || null;
 
   const controls = document.createElement("div");
   controls.className = "chart-controls";
@@ -200,16 +204,21 @@ export function renderNetworkGraph(container, data) {
    * layout, no degree cap. This is "the current selection" for export
    * purposes — associated and disassociated pairs listed together,
    * regardless of what the in-app view is currently capped to drawing.
+   * Always also restricted to the sidebar Groups filter (both sides must
+   * be in it), via the same filterPairs() the pair table uses.
    */
   function fullSelection() {
     const direction = container.querySelector("#ngDirection").value;
     const maxSigRaw = container.querySelector("#ngMaxSig").value.trim();
-    const maxSig = maxSigRaw ? Number(maxSigRaw) : null;
-    const crossOnly = container.querySelector("#ngCrossOnly").checked;
+    const maxSig = maxSigRaw ? Number(maxSigRaw) : undefined;
+    const crossCategoryOnly = container.querySelector("#ngCrossOnly").checked;
 
-    let pairs = crossOnly ? crossCategoryPairs(data) : data.pairs;
-    if (direction !== "both") pairs = pairs.filter((p) => p.direction === direction);
-    if (maxSig != null && !Number.isNaN(maxSig)) pairs = pairs.filter((p) => p.significance != null && p.significance <= maxSig);
+    const pairs = filterPairs(data, data.pairs, {
+      direction: direction === "both" ? undefined : [direction],
+      maxSignificance: Number.isNaN(maxSig) ? undefined : maxSig,
+      crossCategoryOnly,
+      groupIds: groupIdFilter,
+    });
 
     const nodeIds = [...new Set(pairs.flatMap((p) => [p.groupIdA, p.groupIdB]))];
     const edges = pairs.map((p) => ({ a: p.groupIdA, b: p.groupIdB, pair: p }));
@@ -383,5 +392,11 @@ export function renderNetworkGraph(container, data) {
   });
 
   refreshNote();
-  return { refresh: () => refreshNote() };
+  return {
+    refresh: () => refreshNote(),
+    setGroupFilter(groupIds) {
+      groupIdFilter = groupIds || null;
+      refreshNote();
+    },
+  };
 }

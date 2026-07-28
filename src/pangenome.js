@@ -57,12 +57,23 @@ export function mountExplorer(container, data) {
   renderFrequencyClassTable(freqTableDiv, data);
   panel.appendChild(freqCard);
 
-  // heatmapHandle is assigned once the heatmap mounts, below — the Groups
-  // card mounts first (so the detailed group list appears upfront), but its
-  // onFilterChange callback only actually fires on a later filter edit, by
-  // which point the heatmap has already mounted.
+  // heatmapHandle/coinfinderHandles are assigned once those cards mount,
+  // below — the Groups card mounts first (so the detailed group list
+  // appears upfront), but onFilterChange only actually fires on a later
+  // filter edit, by which point everything else has already mounted.
+  // Groups-filter changes always propagate to the pair table, annotation
+  // summary, and network graph too (both sides of a pair must be in the
+  // filtered set — see filterPairs()'s groupIds criterion), not just the
+  // heatmap.
   let heatmapHandle = null;
-  mountGroupsCard(panel, data, { onFilterChange: (groups) => heatmapHandle?.setGroups(groups) });
+  let coinfinderHandles = null;
+  const onGroupsFilterChange = (groups) => {
+    heatmapHandle?.setGroups(groups);
+    const groupIds = new Set(groups.map((g) => g.groupId));
+    coinfinderHandles?.pairCardHandle?.setGroupFilter(groupIds);
+    coinfinderHandles?.networkHandle?.setGroupFilter(groupIds);
+  };
+  mountGroupsCard(panel, data, { onFilterChange: onGroupsFilterChange });
 
   const spectrumCard = card("Gene frequency spectrum");
   const spectrumDiv = document.createElement("div");
@@ -93,7 +104,11 @@ export function mountExplorer(container, data) {
   heatmapHandle = renderHeatmap(heatmapDiv, data);
 
   mountTopFilterExtras(panel, data);
-  mountCoinfinderCards(panel, data);
+  // The Groups filter defaults to every group at mount (see
+  // topfilter-ui.js's DEFAULT_CRITERIA), so an initial groupIds of null
+  // (unrestricted) is equivalent — it only becomes a real Set once the
+  // user edits a Groups filter, via onGroupsFilterChange above.
+  coinfinderHandles = mountCoinfinderCards(panel, data, { groupIds: null });
 
   return {
     setData(newData) {

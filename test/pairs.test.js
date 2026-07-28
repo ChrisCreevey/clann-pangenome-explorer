@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
 import { parseCoinfinderFile } from "../src/parse/coinfinder.js";
-import { resolvePairs, categoryFor, categoryMatrix, crossCategoryPairs, sortBySignificance, filterPairs } from "../src/analysis/pairs.js";
+import { resolvePairs, categoryFor, categoryMatrix, crossCategoryPairs, sortBySignificance, filterPairs, groupAssociationSummary } from "../src/analysis/pairs.js";
 import { keywordTag } from "../src/analysis/tags.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -111,4 +111,40 @@ test("filterPairs: criteria combine as AND", () => {
   keywordTag(data, "AMR", ["beta-lactamase"]); // groupA only
   const hits = filterPairs(data, data.pairs, { tags: ["AMR"], direction: ["disassociated"] });
   assert.deepEqual(pairKeys(hits), ["groupA-groupB"]);
+});
+
+test("filterPairs: groupIds requires BOTH sides to be in the set, not either", () => {
+  const data = loadWithPairs();
+  // groupA-groupD: both in set -> kept. groupB-groupC: neither in set -> dropped.
+  // groupA-groupB / groupC-groupD: only one side in set -> dropped (not "either" semantics).
+  const hits = filterPairs(data, data.pairs, { groupIds: new Set(["groupA", "groupD"]) });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupD"]);
+});
+
+test("filterPairs: groupIds combines with other criteria as AND", () => {
+  const data = loadWithPairs();
+  const hits = filterPairs(data, data.pairs, { groupIds: new Set(["groupA", "groupB", "groupD"]) });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupB", "groupA-groupD"]);
+});
+
+test("groupAssociationSummary rolls up one row per group with associated/disassociated/total counts and the group's own fields", () => {
+  const data = loadWithPairs();
+  const rows = groupAssociationSummary(data.pairs);
+  assert.equal(rows.length, 4); // groupA, groupD, groupB, groupC — each appears in exactly 2 pairs (1 associated, 1 disassociated)
+  const groupA = rows.find((r) => r.groupId === "groupA");
+  assert.equal(groupA.associated, 1);
+  assert.equal(groupA.disassociated, 1);
+  assert.equal(groupA.total, 2);
+  // carries the group's own fields (spread), not just the counts
+  assert.equal(groupA.annotation, "beta-lactamase");
+  assert.equal(groupA.freqClass, "core");
+});
+
+test("groupAssociationSummary only includes groups that appear in the given pairs (e.g. an already-filtered selection)", () => {
+  const data = loadWithPairs();
+  const onlyAD = data.pairs.filter((p) => p.groupIdA === "groupA" && p.groupIdB === "groupD");
+  const rows = groupAssociationSummary(onlyAD);
+  assert.deepEqual(rows.map((r) => r.groupId).sort(), ["groupA", "groupD"]);
+  assert.equal(rows.find((r) => r.groupId === "groupA").associated, 1);
+  assert.equal(rows.find((r) => r.groupId === "groupA").disassociated, 0);
 });

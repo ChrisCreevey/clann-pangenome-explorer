@@ -59,6 +59,31 @@ export function groupTableCsv(data, groups, delimiter = ",") {
 }
 
 /**
+ * Annotation-to-association summary export (build brief §6 Phase 6,
+ * "map annotations to associations"): one row per group appearing in the
+ * current pair selection — every column groupTableCsv() would export
+ * (matrix annotation, every uploaded annotation column, tags, frequency
+ * class, isolate/sequence counts) plus associated/disassociated/total
+ * counts from analysis/pairs.js's groupAssociationSummary(). `rows` is
+ * that function's output (already carries associated/disassociated/total
+ * spread alongside the group's own fields).
+ */
+export function groupAssociationSummaryCsv(data, rows, delimiter = ",") {
+  const columns = [...GROUP_COLUMNS, "associated", "disassociated", "total"];
+  const header = [...GROUP_HEADER, "associated", "disassociated", "total"];
+  for (const source of data.meta.annotationSources || []) {
+    columns.splice(columns.length - 3, 0, `ann_${source.key}`);
+    header.splice(header.length - 3, 0, source.header);
+    if (source.workflow === "B") {
+      columns.splice(columns.length - 3, 0, `annMatched_${source.key}`);
+      header.splice(header.length - 3, 0, `${source.header} — matched genes`);
+    }
+  }
+  const dataRows = rows.map((g) => columns.map((col) => (Array.isArray(g[col]) ? g[col].join(";") : g[col])));
+  return toDelimited(header, dataRows, delimiter);
+}
+
+/**
  * Multi-copy/gene-family candidate export — a feeder into Clann's
  * multi-copy supertree step (build brief §7). Filename placeholder
  * pending confirmation against Clann's own naming (build brief §9c).

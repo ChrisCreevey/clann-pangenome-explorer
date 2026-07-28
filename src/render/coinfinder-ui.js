@@ -4,14 +4,17 @@
 // fresh into the panel on every render (unlike topfilter-ui.js's sidebar,
 // nothing here is static markup, so no module-level "bind once" needed).
 
-import { categoryMatrix, filterPairs } from "../analysis/pairs.js";
+import { categoryMatrix, filterPairs, groupAssociationSummary } from "../analysis/pairs.js";
 import { listTags } from "../analysis/tags.js";
 import { renderCategoryMatrix } from "./charts.js";
 import { renderPairTable } from "./pair-table.js";
 import { renderNetworkGraph } from "./network-graph.js";
+import { renderGroupTable, DEFAULT_COLS } from "./group-table.js";
+import { openGroupDetail } from "./group-detail.js";
 import { runBusy } from "./busy.js";
 import { downloadText } from "./download-util.js";
 import { pairsToDelimited } from "../../export/pair-export.js";
+import { groupAssociationSummaryCsv } from "../../export/group-export.js";
 
 function debounce(fn, ms) {
   let t;
@@ -32,7 +35,19 @@ function card(titleText) {
 
 const DEFAULT_PAIR_CRITERIA = { direction: ["associated", "disassociated"], crossCategoryOnly: false, maxSignificance: undefined, annotationText: undefined, tags: [] };
 
-function renderPairCard(panel, data) {
+/**
+ * Mount the pair table card. `opts.groupIds` is the sidebar Groups
+ * filter's current selection (or null, unrestricted) — always applied,
+ * both sides of a pair must be in it, via filterPairs()'s groupIds
+ * criterion. Returns a handle with setGroupFilter(groupIds) so the Groups
+ * filter can keep this in sync on every edit, and setSummaryHandle() so
+ * the annotation-summary card (mounted after this one) can be kept in
+ * sync with the same filtered pairs without recomputing its own filters.
+ */
+function renderPairCard(panel, data, opts = {}) {
+  let groupIdFilter = opts.groupIds || null;
+  let summaryHandle = null;
+
   const c = card("Association / disassociation pairs");
   if (data.unmatchedPairs.length) {
     const note = document.createElement("div");
@@ -40,6 +55,10 @@ function renderPairCard(panel, data) {
     note.textContent = `${data.unmatchedPairs.length} pair(s) referenced a gene-group ID not found in the loaded pangenome and were excluded from the table below (naming mismatch between CoinFinder's input and this file — not silently dropped, just not resolvable).`;
     c.appendChild(note);
   }
+  const linkNote = document.createElement("div");
+  linkNote.className = "hint";
+  linkNote.textContent = "Always restricted to the sidebar Groups filter: both sides of a pair must currently pass it, not just one.";
+  c.appendChild(linkNote);
 
   // Filters — the main tool for finding associated/disassociated groups by
   // annotation once the raw pair list runs into the hundreds of thousands
@@ -79,13 +98,27 @@ function renderPairCard(panel, data) {
   `;
   c.appendChild(controls);
 
+  const countEl = document.createElement("div");
+  countEl.className = "hint";
+  countEl.id = "pairFilteredCount";
+  c.appendChild(countEl);
+
   const tableDiv = document.createElement("div");
   tableDiv.style.marginTop = "10px";
   c.appendChild(tableDiv);
   panel.appendChild(c);
 
-  let currentPairs = filterPairs(data, data.pairs, DEFAULT_PAIR_CRITERIA);
+  function baseCriteria() {
+    return { ...DEFAULT_PAIR_CRITERIA, groupIds: groupIdFilter };
+  }
+
+  let currentPairs = filterPairs(data, data.pairs, baseCriteria());
   const handle = renderPairTable(tableDiv, currentPairs);
+  updateCount();
+
+  function updateCount() {
+    countEl.textContent = `${currentPairs.length}/${data.pairs.length} pairs selected`;
+  }
 
   function readCriteria() {
     return {
@@ -94,6 +127,7 @@ function renderPairCard(panel, data) {
       maxSignificance: c.querySelector("#pfMaxSig").value ? Number(c.querySelector("#pfMaxSig").value) : undefined,
       annotationText: c.querySelector("#pfText").value.trim() || undefined,
       tags: [...c.querySelectorAll(".pfTag:checked")].map((cb) => cb.value),
+      groupIds: groupIdFilter,
     };
   }
 
@@ -107,6 +141,8 @@ function renderPairCard(panel, data) {
     runBusy(() => {
       currentPairs = filterPairs(data, data.pairs, criteria);
       handle.setPairs(currentPairs);
+      updateCount();
+      summaryHandle?.setPairs(currentPairs);
     });
   }
 
@@ -133,6 +169,15 @@ function renderPairCard(panel, data) {
   crossLink.className = "hint";
   crossLink.innerHTML = `For a report: export this table, or the network view below as SVG, then stage the underlying sequences in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a> for a closer look at an interesting pair.`;
   c.appendChild(crossLink);
+
+  return {
+    getCurrentPairs: () => currentPairs,
+    setSummaryHandle(handle) { summaryHandle = handle; }, // wired once the summary card mounts, just below
+    setGroupFilter(groupIds) {
+      groupIdFilter = groupIds || null;
+      applyFilters();
+    },
+  };
 }
 
 function renderMatrixCard(panel, data) {
@@ -143,18 +188,84 @@ function renderMatrixCard(panel, data) {
   renderCategoryMatrix(div, categoryMatrix(data));
 }
 
-function renderNetworkCard(panel, data) {
+/**
+ * Per-group annotation × association rollup ("option A" from the scoping
+ * discussion): one row per group appearing in the pair table's current
+ * selection, every field the Groups table itself shows (matrix
+ * annotation, every uploaded annotation column, tags, frequency class,
+ * counts) plus associated/disassociated/total. Kept in sync with the pair
+ * table via setPairs(), called from renderPairCard's applyFilters().
+ */
+function renderSummaryCard(panel, data, initialPairs) {
+  const c = card("Annotation association summary");
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "One row per group in the pair table's current selection above, with how many associated/disassociated partners it has.";
+  c.appendChild(hint);
+
+  const exportRow = document.createElement("div");
+  exportRow.className = "chart-controls";
+  exportRow.innerHTML = `<button class="act" id="summaryExportCsv" style="width:auto">Export table (.csv)</button>`;
+  c.appendChild(exportRow);
+
+  const tableDiv = document.createElement("div");
+  tableDiv.style.marginTop = "10px";
+  c.appendChild(tableDiv);
+  panel.appendChild(c);
+
+  const columns = [...DEFAULT_COLS];
+  const columnLabels = { associated: "Associated", disassociated: "Disassociated", total: "Total" };
+  const numericColumns = ["associated", "disassociated", "total"];
+  for (const source of data.meta.annotationSources || []) {
+    columns.push(`ann_${source.key}`);
+    columnLabels[`ann_${source.key}`] = source.header;
+    if (source.workflow === "B") {
+      columns.push(`annMatched_${source.key}`);
+      columnLabels[`annMatched_${source.key}`] = `${source.header} — matched genes`;
+      numericColumns.push(`annMatched_${source.key}`);
+    }
+  }
+  columns.push("tags", "associated", "disassociated", "total");
+
+  let currentRows = groupAssociationSummary(initialPairs);
+  const handle = renderGroupTable(tableDiv, currentRows, {
+    columns, columnLabels, numericColumns, defaultSort: "total",
+    onRowClick: (group) => openGroupDetail(data, group),
+  });
+
+  exportRow.querySelector("#summaryExportCsv").addEventListener("click", () =>
+    downloadText("pangenome-annotation-association-summary.csv", groupAssociationSummaryCsv(data, currentRows, ","), "text/csv"));
+
+  return {
+    setPairs(pairs) {
+      currentRows = groupAssociationSummary(pairs);
+      handle.setGroups(currentRows);
+    },
+  };
+}
+
+function renderNetworkCard(panel, data, opts = {}) {
   const c = card("Association / disassociation network");
   const div = document.createElement("div");
   c.appendChild(div);
   panel.appendChild(c);
-  renderNetworkGraph(div, data);
+  return renderNetworkGraph(div, data, opts);
 }
 
-/** Mount the Phase 6 cards into `panel` (already attached to the document) for `data`. */
-export function mountCoinfinderCards(panel, data) {
-  if (!data.pairs.length && !data.unmatchedPairs.length) return; // nothing loaded yet — no empty cards to show
-  renderPairCard(panel, data);
+/**
+ * Mount the Phase 6 cards into `panel` (already attached to the document)
+ * for `data`. `opts.groupIds` (or null, unrestricted) is the sidebar
+ * Groups filter's current selection, always applied to every pair-derived
+ * view here (pair table, annotation summary, network) — both sides of a
+ * pair must be in it. Returns handles for pangenome.js to keep in sync on
+ * every Groups-filter edit.
+ */
+export function mountCoinfinderCards(panel, data, opts = {}) {
+  if (!data.pairs.length && !data.unmatchedPairs.length) return null; // nothing loaded yet — no empty cards to show
+  const pairCardHandle = renderPairCard(panel, data, opts);
   renderMatrixCard(panel, data);
-  renderNetworkCard(panel, data);
+  const summaryHandle = renderSummaryCard(panel, data, pairCardHandle.getCurrentPairs());
+  pairCardHandle.setSummaryHandle(summaryHandle);
+  const networkHandle = renderNetworkCard(panel, data, opts);
+  return { pairCardHandle, networkHandle };
 }
