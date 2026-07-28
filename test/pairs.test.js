@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
 import { parseCoinfinderFile } from "../src/parse/coinfinder.js";
-import { resolvePairs, categoryFor, categoryMatrix, crossCategoryPairs, sortBySignificance } from "../src/analysis/pairs.js";
+import { resolvePairs, categoryFor, categoryMatrix, crossCategoryPairs, sortBySignificance, filterPairs } from "../src/analysis/pairs.js";
 import { keywordTag } from "../src/analysis/tags.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -67,4 +67,48 @@ test("sortBySignificance orders by significance ascending, nulls last, ignoring 
   const data = loadWithPairs();
   const sorted = sortBySignificance(data.pairs);
   assert.deepEqual(sorted.map((p) => p.significance), [0.001, 0.001, 0.02, 0.04]);
+});
+
+function pairKeys(pairs) {
+  return pairs.map((p) => `${p.groupIdA}-${p.groupIdB}`).sort();
+}
+
+test("filterPairs: annotationText matches either side's combined annotation text", () => {
+  const data = loadWithPairs();
+  // groupA's matrix annotation is "beta-lactamase" — appears in A-D (associated) and A-B (disassociated)
+  const hits = filterPairs(data, data.pairs, { annotationText: "beta-lactamase" });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupB", "groupA-groupD"]);
+});
+
+test("filterPairs: tags matches either side carrying any listed tag", () => {
+  const data = loadWithPairs();
+  keywordTag(data, "AMR", ["beta-lactamase"]); // groupA only
+  const hits = filterPairs(data, data.pairs, { tags: ["AMR"] });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupB", "groupA-groupD"]);
+});
+
+test("filterPairs: direction restricts to the listed directions", () => {
+  const data = loadWithPairs();
+  const hits = filterPairs(data, data.pairs, { direction: ["disassociated"] });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupB", "groupC-groupD"]);
+});
+
+test("filterPairs: maxSignificance drops pairs above the threshold or with no value", () => {
+  const data = loadWithPairs();
+  const hits = filterPairs(data, data.pairs, { maxSignificance: 0.01 });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupD", "groupC-groupD"]);
+});
+
+test("filterPairs: crossCategoryOnly keeps only pairs whose sides differ in category", () => {
+  const data = loadWithPairs();
+  keywordTag(data, "AMR", ["beta-lactamase"]); // groupA only
+  const hits = filterPairs(data, data.pairs, { crossCategoryOnly: true });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupB", "groupA-groupD"]);
+});
+
+test("filterPairs: criteria combine as AND", () => {
+  const data = loadWithPairs();
+  keywordTag(data, "AMR", ["beta-lactamase"]); // groupA only
+  const hits = filterPairs(data, data.pairs, { tags: ["AMR"], direction: ["disassociated"] });
+  assert.deepEqual(pairKeys(hits), ["groupA-groupB"]);
 });

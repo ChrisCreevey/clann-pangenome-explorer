@@ -2,6 +2,8 @@
 // category-by-category / cross-category analyses built on top (build
 // brief §6 Phase 6, the module getting the most build attention).
 
+import { annotationSearchText } from "../parse/annotation.js";
+
 /**
  * A group's category for pair analysis purposes is its first tag, or
  * 'uncategorised' if it has none. Groups can carry several tags (build
@@ -74,5 +76,34 @@ export function sortBySignificance(pairs) {
     if (a.significance == null) return 1;
     if (b.significance == null) return -1;
     return a.significance - b.significance;
+  });
+}
+
+/**
+ * Filter resolved pairs — the main lens for "find associated/disassociated
+ * groups based on annotation" at scale, since browsing the raw pair list
+ * directly stops being practical once it runs into the hundreds of
+ * thousands of rows. Any criterion left undefined/empty is not applied.
+ *
+ * `annotationText` matches if EITHER side's combined annotation text
+ * (matrix annotation plus every uploaded annotation column, via
+ * annotationSearchText) contains it. `tags` matches if either side
+ * carries any of the listed tags. `direction` restricts to
+ * 'associated'/'disassociated' (an array, so both can be selected).
+ * `maxSignificance` drops pairs with no significance value or a value
+ * above the threshold. `crossCategoryOnly` keeps only pairs whose two
+ * sides fall in different categories.
+ */
+export function filterPairs(data, pairs, criteria = {}) {
+  const { direction, maxSignificance, crossCategoryOnly, annotationText, tags } = criteria;
+  const needle = annotationText ? annotationText.trim().toLowerCase() : null;
+
+  return pairs.filter((pair) => {
+    if (direction && direction.length && !direction.includes(pair.direction)) return false;
+    if (maxSignificance != null && (pair.significance == null || pair.significance > maxSignificance)) return false;
+    if (crossCategoryOnly && categoryFor(pair.resolvedA) === categoryFor(pair.resolvedB)) return false;
+    if (needle && !annotationSearchText(data, pair.resolvedA).includes(needle) && !annotationSearchText(data, pair.resolvedB).includes(needle)) return false;
+    if (tags && tags.length && !tags.some((t) => pair.resolvedA.tags.includes(t) || pair.resolvedB.tags.includes(t))) return false;
+    return true;
   });
 }
