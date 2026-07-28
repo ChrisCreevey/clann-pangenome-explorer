@@ -148,12 +148,9 @@
           <div class="hint">Controls the order annotation columns appear in the Groups table, its CSV export, and the group detail card.</div>
         </div>
         <div id="annotationConsensusControls" style="display:none">
-          <div class="row"><label for="annMinCount">Min count for consensus</label></div>
-          <input type="number" id="annMinCount" min="1" step="1" value="1">
-          <div class="hint" style="text-align:center;margin:2px 0">— AND —</div>
           <div class="row"><label for="annMinPercent">Min % for consensus</label></div>
           <input type="number" id="annMinPercent" min="0" max="100" step="1" value="50">
-          <div class="hint">Both thresholds must be met for a group's top annotation to become its consensus (e.g. the defaults require at least 1 occurrence <strong>and</strong> at least 50% of the group's annotated genes). If either isn't met, the group is left blank by this source — but its full disagreement breakdown stays visible in the group detail card.</div>
+          <div class="hint">A group's top annotation becomes its consensus only when it's held by at least this % of the group's annotated genes (default 50%, i.e. a plain majority). Need a minimum absolute count too (e.g. "at least 3 genes")? That's the same as this % relative to the group's own gene count — check the group's "Sequences" count in the Groups table and set the % accordingly. If the threshold isn't met, the group is left blank by this source — but its full disagreement breakdown stays visible in the group detail card.</div>
           <button class="act" id="annReapply" style="width:auto">Re-apply with these thresholds</button>
         </div>
       </details>

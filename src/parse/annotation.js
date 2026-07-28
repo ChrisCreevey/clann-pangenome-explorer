@@ -162,10 +162,14 @@ export function applyWorkflowA(data, text, opts = {}) {
  * genes seen), the number of constituent genes matched into that group
  * (surfaced as its own "matched" indicator alongside the value), and the
  * full disagreement breakdown. A consensus is only accepted when it clears
- * both `minCount` (absolute) and `minPercent` (share of the group's
- * annotated genes) — otherwise the group's value is left blank but its
- * breakdown and matched count are still recorded so the disagreement stays
- * visible rather than silently dropped.
+ * `minPercent` (share of the group's annotated genes) — otherwise the
+ * group's value is left blank but its breakdown and matched count are
+ * still recorded so the disagreement stays visible rather than silently
+ * dropped. (There is deliberately no separate absolute-count threshold —
+ * a minimum count is just a minimum percentage relative to however many
+ * genes the group actually has, so it added a second knob without adding
+ * a second real degree of freedom, and mostly made the two fields look
+ * like unrelated settings rather than one combined condition.)
  *
  * Rows are deduplicated by gene ID before tallying: some annotation tools
  * (e.g. a defense-system finder reporting one locus under two overlapping
@@ -179,7 +183,7 @@ export function applyWorkflowA(data, text, opts = {}) {
  * Returns { matched, unmatchedIds, acceptedCount, rejectedCount, key, header }.
  */
 export function applyWorkflowB(data, text, opts = {}) {
-  const { minCount = 1, minPercent = 50 } = opts;
+  const { minPercent = 50 } = opts;
   const { header, rows } = parseRows(text);
   const { idCol, annotationCol } = { ...guessIdAndAnnotationColumns(header), ...opts };
   const columnHeader = header[annotationCol] || "Annotation";
@@ -215,7 +219,7 @@ export function applyWorkflowB(data, text, opts = {}) {
       .map(([annotation, count]) => ({ annotation, count, pct: (count / total) * 100 }))
       .sort((a, b) => b.count - a.count);
     const top = breakdown[0];
-    const accepted = top.count >= minCount && top.pct >= minPercent;
+    const accepted = top.pct >= minPercent;
 
     setAnnotationColumn(group, key, {
       value: accepted ? top.annotation : null,
@@ -227,6 +231,6 @@ export function applyWorkflowB(data, text, opts = {}) {
   }
 
   const source = data.meta.annotationSources.find((s) => s.key === key);
-  Object.assign(source, { matched, unmatchedIds, acceptedCount, rejectedCount, minCount, minPercent });
+  Object.assign(source, { matched, unmatchedIds, acceptedCount, rejectedCount, minPercent });
   return { matched, unmatchedIds, acceptedCount, rejectedCount, key, header: source.header };
 }

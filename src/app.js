@@ -298,9 +298,8 @@ async function applyAnnotationText(text, name, { reuseSourceKey = false } = {}) 
     if (workflow === "A") {
       return { workflow, ...applyWorkflowA(currentData, text, { sourceKey }) };
     }
-    const minCount = Number(document.getElementById("annMinCount").value) || 1;
     const minPercent = Number(document.getElementById("annMinPercent").value) || 50;
-    return { workflow, ...applyWorkflowB(currentData, text, { minCount, minPercent, sourceKey }) };
+    return { workflow, ...applyWorkflowB(currentData, text, { minPercent, sourceKey }) };
   });
 
   if (result.workflow === "unknown") {

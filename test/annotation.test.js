@@ -65,7 +65,7 @@ test("re-applying with an explicit sourceKey updates the existing column instead
 
 test("applyWorkflowB computes consensus, consistency score, matched-gene count, and full breakdown in its own column", () => {
   const data = loadRoary();
-  const { matched, unmatchedIds, acceptedCount, rejectedCount, key } = applyWorkflowB(data, fixture("annotation-workflow-b.csv"), { minCount: 1, minPercent: 50 });
+  const { matched, unmatchedIds, acceptedCount, rejectedCount, key } = applyWorkflowB(data, fixture("annotation-workflow-b.csv"), { minPercent: 50 });
   assert.equal(matched, 10); // 11 rows minus 1 unmatched
   assert.deepEqual(unmatchedIds, ["unknown_gene_99"]);
   assert.equal(acceptedCount, 4);
@@ -91,7 +91,7 @@ test("applyWorkflowB computes consensus, consistency score, matched-gene count, 
 
 test("applyWorkflowB rejects a consensus below minPercent, keeping the breakdown and matched count visible", () => {
   const data = loadRoary();
-  const { acceptedCount, rejectedCount, key } = applyWorkflowB(data, fixture("annotation-workflow-b.csv"), { minCount: 1, minPercent: 70 });
+  const { acceptedCount, rejectedCount, key } = applyWorkflowB(data, fixture("annotation-workflow-b.csv"), { minPercent: 70 });
   // groupA is 66.7% -> rejected; groupB/groupC/groupD are 100/100/75 -> accepted
   assert.equal(acceptedCount, 3);
   assert.equal(rejectedCount, 1);
@@ -117,7 +117,7 @@ test("applyWorkflowB dedupes rows by gene ID so a repeated locus only casts one 
     "groupA_2,beta-lactamase",
     "groupA_3,hypothetical protein",
   ].join("\n");
-  const { matched, unmatchedIds, key } = applyWorkflowB(data, text, { minCount: 1, minPercent: 50 });
+  const { matched, unmatchedIds, key } = applyWorkflowB(data, text, { minPercent: 50 });
   assert.equal(matched, 3); // 3 distinct gene IDs, not 4 rows
   assert.deepEqual(unmatchedIds, []);
 
