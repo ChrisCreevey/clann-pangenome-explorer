@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
 import { computeAccumulationCurves } from "../src/analysis/accumulation.js";
-import { clusterOrder, groupPresenceVector, genomeColumnVector, maxClusterableItems } from "../src/analysis/clustering.js";
+import { clusterOrder, groupPresenceVector, genomeColumnVector, estimateClusterSeconds } from "../src/analysis/clustering.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
@@ -64,18 +64,24 @@ test("genomeColumnVector reflects a genome's copy count across every group, in g
   assert.deepEqual([...genomeColumnVector(data, g1.index)], [1, 1, 0, 2]);
 });
 
-test("clusterOrder falls back to identity order once item count exceeds the vector-length-aware cap", () => {
-  const longVector = new Array(1000).fill(0); // maxClusterableItems(1000) is small
-  const cap = maxClusterableItems(1000);
-  const items = Array.from({ length: cap + 1 }, () => longVector);
+test("clusterOrder actually clusters rather than silently refusing above any 'comfortable' size — no judgment-call cap", () => {
+  // 900 items with a real (non-degenerate) vector — well past the old flat
+  // 800-item cap — should still produce a genuine reordering, not identity.
+  const n = 900;
+  const items = Array.from({ length: n }, (_, i) => {
+    const v = new Array(20).fill(0);
+    v[i % 20] = 1; // gives real, non-uniform structure to cluster on
+    return v;
+  });
   const order = clusterOrder(items);
-  assert.deepEqual(order, items.map((_, i) => i)); // identity — too many items to cluster at this vector length
+  assert.notDeepEqual(order, items.map((_, i) => i));
+  assert.deepEqual([...order].sort((a, b) => a - b), items.map((_, i) => i)); // still a full permutation
 });
 
-test("maxClusterableItems shrinks as vector length grows, and grows as it shrinks", () => {
-  const capForLarge = maxClusterableItems(20000);
-  const capForSmall = maxClusterableItems(500);
-  assert.ok(capForLarge < capForSmall);
+test("estimateClusterSeconds scales with n^2 * vectorLength (for UI hinting, not enforcement)", () => {
+  const small = estimateClusterSeconds(100, 1000);
+  const large = estimateClusterSeconds(1000, 1000); // 10x n -> 100x the estimate
+  assert.ok(large > small * 50);
 });
 
 test("clusterOrder with the euclidean metric groups similar copy-number vectors together, distinguishing magnitude that jaccard would treat as identical", () => {

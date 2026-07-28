@@ -14,6 +14,7 @@ import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB } from "./pars
 import { keywordTag, listUploadTag } from "./analysis/tags.js";
 import { parseCoinfinderFile } from "./parse/coinfinder.js";
 import { resolvePairs } from "./analysis/pairs.js";
+import { runBusy } from "./render/busy.js";
 
 const explorerEl = document.getElementById("explorer");
 const columnMappingEl = document.getElementById("columnMapping");
@@ -59,20 +60,26 @@ function loadData(data, name) {
 
 /** Re-render the explorer in place after annotation/tagging mutates currentData (no new file). */
 function refreshExplorer() {
-  if (handle) handle = handle.setData(currentData);
+  if (!handle) return;
+  // Re-rendering the whole explorer can be non-trivial at large scale (heatmap
+  // rasterisation, accumulation curves) — busy spinner for the duration.
+  runBusy(() => { handle = handle.setData(currentData); });
 }
 
 function openText(text, name) {
-  try {
-    const data = parse(text, { filename: name });
+  // Parsing + the initial render can both take real time at large scale
+  // (measured several seconds at 10,000+ genomes) — busy spinner covers both,
+  // deferred by a tick so the spinner actually paints before the blocking work.
+  runBusy(() => {
+    const data = parse(text, { filename: name }); // throws ColumnMappingNeeded or a parse error
     loadData(data, name);
-  } catch (err) {
+  }).catch((err) => {
     if (err instanceof ColumnMappingNeeded) {
       showColumnMapping(err, text, name);
       return;
     }
     showError(`Couldn't parse ${name}: ${err && err.message ? err.message : err}`);
-  }
+  });
 }
 
 function showColumnMapping(err, text, name) {
@@ -84,12 +91,12 @@ function showColumnMapping(err, text, name) {
     previewHeader: err.previewHeader,
     previewRows: err.previewRows,
     onApply({ groupIdColumn, genomeColumns }) {
-      try {
+      runBusy(() => {
         const data = parse(text, { filename: name, groupIdColumn, genomeColumns });
         loadData(data, name);
-      } catch (retryErr) {
+      }).catch((retryErr) => {
         showError(`Still couldn't parse ${name} with that mapping: ${retryErr && retryErr.message ? retryErr.message : retryErr}`);
-      }
+      });
     },
     onCancel() {
       columnMappingEl.style.display = "none";

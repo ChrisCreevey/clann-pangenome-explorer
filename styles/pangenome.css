@@ -38,6 +38,14 @@ header .title{font-weight:600;font-size:12.5px;font-family:var(--font-mono);colo
 header .title:not(:empty){padding-left:12px;border-left:1px solid var(--line)}
 header .meta{color:var(--muted);font-size:12px;font-family:var(--font-mono)}
 header .meta b{color:var(--ink);font-weight:600}
+/* Pure transform animation so the compositor keeps it spinning even while
+   the main thread is busy with a long synchronous computation (clustering,
+   parsing a large file) — that's the whole point of this indicator. */
+.busy-spinner{width:13px;height:13px;flex:none;border-radius:50%;
+  border:2px solid var(--line);border-top-color:var(--accent);
+  animation:busy-spin .7s linear infinite}
+.busy-spinner[hidden]{display:none}
+@keyframes busy-spin{to{transform:rotate(360deg)}}
 .spacer{flex:1}
 main{flex:1;display:flex;min-height:0}
 #foot{flex:none;display:flex;align-items:center;gap:10px;padding:6px 14px;border-top:1px solid var(--line);

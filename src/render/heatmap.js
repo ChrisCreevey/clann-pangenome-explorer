@@ -7,13 +7,17 @@
 // just a remap, not a data copy), then the visible canvas just redraws
 // that image under a pan/zoom transform (wheel to zoom, drag to pan —
 // same interaction model as Tree Viewer's SVG canvas), so re-sorting is
-// the only thing that re-rasterises. See analysis/clustering.js for why
-// column clustering gets a lower item cap than row clustering typically
-// does at the same genome count — it costs O(genomeCount^2 * groupCount),
-// and groupCount is usually the larger axis.
+// the only thing that re-rasterises.
+//
+// Clustering (either axis) has no silent size-based refusal — see
+// analysis/clustering.js for why that was removed. Instead: an honest
+// time estimate is shown before a large clustering run starts, and the
+// header busy spinner (render/busy.js) runs for its duration so the page
+// reads as "working", not "hung" — it's the user's call whether to wait.
 
-import { clusterOrder, groupPresenceVector, genomeColumnVector, maxClusterableItems } from "../analysis/clustering.js";
+import { clusterOrder, groupPresenceVector, genomeColumnVector, estimateClusterSeconds } from "../analysis/clustering.js";
 import { presenceVector } from "../parse/matrix.js";
+import { runBusy } from "./busy.js";
 
 const FREQ_CLASS_RGB = {
   core: [11, 114, 104],       // --compute-500
@@ -133,43 +137,64 @@ export function renderHeatmap(container, data) {
     ctx.restore();
   }
 
+  // Above this estimate, tell the user roughly how long to expect before
+  // starting — clustering has no size-based refusal, so this is the
+  // honesty mechanism instead of a silent cap.
+  const SLOW_WARNING_SECONDS = 1.5;
+
   function applySort(mode) {
+    const note = container.querySelector("#hmNote");
     if (mode === "cluster") {
-      const vectors = groups.map((g) => groupPresenceVector(data, g.groupIndex));
-      rowOrder = clusterOrder(vectors, { metric: "jaccard" });
-      container.querySelector("#hmNote").textContent =
-        groups.length > maxClusterableItems(genomeCount)
-          ? `Too many groups (${groups.length}) to cluster at this genome count — showing default order instead.`
-          : `${groups.length} groups ordered by presence similarity.`;
+      const estSeconds = estimateClusterSeconds(groups.length, genomeCount);
+      note.textContent = estSeconds > SLOW_WARNING_SECONDS
+        ? `Ordering ${groups.length} groups by similarity — roughly ${Math.ceil(estSeconds)}s, page will be unresponsive until it finishes…`
+        : `Ordering ${groups.length} groups by similarity…`;
     } else {
-      rowOrder = groups
-        .map((g, i) => i)
-        .sort((a, b) => groups[b].genomesPresentIn - groups[a].genomesPresentIn);
-      container.querySelector("#hmNote").textContent = "";
+      note.textContent = "";
     }
-    rasterise();
-    fitToWidth();
-    draw();
+    runBusy(() => {
+      if (mode === "cluster") {
+        const vectors = groups.map((g) => groupPresenceVector(data, g.groupIndex));
+        rowOrder = clusterOrder(vectors, { metric: "jaccard" });
+      } else {
+        rowOrder = groups
+          .map((g, i) => i)
+          .sort((a, b) => groups[b].genomesPresentIn - groups[a].genomesPresentIn);
+      }
+      rasterise();
+      fitToWidth();
+      draw();
+    }).then(() => {
+      if (mode === "cluster") note.textContent = `${groups.length} groups ordered by presence similarity.`;
+    });
   }
 
   function applyColumnSort(mode) {
+    const noteCol = container.querySelector("#hmNoteCol");
     if (mode === "cluster") {
-      // Copy number (not just presence) — Euclidean distance is more
-      // informative here than Jaccard, which would treat 1 copy and 5
-      // copies of the same gene as identical.
-      const vectors = data.genomes.map((g) => genomeColumnVector(data, g.index));
-      colOrder = clusterOrder(vectors, { metric: "euclidean" });
-      container.querySelector("#hmNoteCol").textContent =
-        genomeCount > maxClusterableItems(groups.length)
-          ? `Too many genomes (${genomeCount}) to cluster at this group count — showing original order instead.`
-          : `${genomeCount} genomes ordered by copy-number similarity.`;
+      const estSeconds = estimateClusterSeconds(genomeCount, groups.length);
+      noteCol.textContent = estSeconds > SLOW_WARNING_SECONDS
+        ? `Ordering ${genomeCount} genomes by copy-number similarity — roughly ${Math.ceil(estSeconds)}s, page will be unresponsive until it finishes…`
+        : `Ordering ${genomeCount} genomes by copy-number similarity…`;
     } else {
-      colOrder = data.genomes.map((g) => g.index);
-      container.querySelector("#hmNoteCol").textContent = "";
+      noteCol.textContent = "";
     }
-    rasterise();
-    fitToWidth();
-    draw();
+    runBusy(() => {
+      if (mode === "cluster") {
+        // Copy number (not just presence) — Euclidean distance is more
+        // informative here than Jaccard, which would treat 1 copy and 5
+        // copies of the same gene as identical.
+        const vectors = data.genomes.map((g) => genomeColumnVector(data, g.index));
+        colOrder = clusterOrder(vectors, { metric: "euclidean" });
+      } else {
+        colOrder = data.genomes.map((g) => g.index);
+      }
+      rasterise();
+      fitToWidth();
+      draw();
+    }).then(() => {
+      if (mode === "cluster") noteCol.textContent = `${genomeCount} genomes ordered by copy-number similarity.`;
+    });
   }
 
   // --- zoom (wheel) / pan (drag), same interaction model as Tree Viewer ---

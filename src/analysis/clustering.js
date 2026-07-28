@@ -1,35 +1,40 @@
 // clustering.js — lightweight client-side ordering for the heatmap's
 // "sort by clustering" options, for both rows (gene groups) and columns
-// (genomes) — build brief §6, Phase 3, extended on request to cover
-// columns too. Not real hierarchical clustering/a dendrogram: a greedy
-// nearest-neighbour chain, which is enough to visually pull similar
-// rows/columns together without the cost of a full clustering algorithm.
+// (genomes) — build brief §6, Phase 3, extended to cover columns too.
+// Not real hierarchical clustering/a dendrogram: a greedy nearest-
+// neighbour chain, which is enough to visually pull similar rows/columns
+// together without the cost of a full clustering algorithm.
 //
 // Cost model: ordering n items this way compares every pair at each of
 // the n-1 steps, and each comparison costs O(m) (m = vector length —
 // genomeCount for row/group vectors, groupCount for column/genome
 // vectors), so the whole chain costs O(n^2 * m). Benchmarked in Node at
-// ~340M such operations/sec. The previous flat cap (800 items,
-// regardless of m) ignored the other axis entirely: at 800 groups and a
-// large genome count (10,000) it measured ~18.6s, and at 500 genomes
-// against 20,000 groups (the column-clustering case) ~14.7s — both far
-// past "responsive" for something triggered from a dropdown. The cap
-// below is instead computed from the n^2*m product against a fixed time
-// budget, so it adapts to whichever axis is larger: a study with many
-// groups gets a lower genome-clustering cap than one with few groups,
-// and vice versa for row clustering.
+// ~340M such operations/sec.
+//
+// This used to silently fall back to the identity order above a
+// computed item cap. That was a judgment call about what counts as
+// "too slow", not a technical limit — the user gets to decide whether
+// they want to wait, not have the tool decide for them. So clusterOrder()
+// now always actually clusters (there's still an ABSOLUTE_MAX circuit
+// breaker far beyond anything realistic, purely against a degenerate
+// input hanging the tab indefinitely with no way out — not a UX
+// judgment). estimateClusterSeconds() is exposed so the UI can show an
+// honest time estimate before the user commits, and the caller is
+// expected to show a busy indicator (src/render/busy.js) for the
+// duration, since this is a synchronous, main-thread-blocking
+// computation — there is no Web Worker here, so the rest of the page is
+// genuinely unresponsive while it runs, and a large-enough choice can
+// trigger the browser's own "Page Unresponsive" prompt. That's an
+// honest cost of the "let the user choose" approach, not a bug.
 
 import { presenceVector, genomeVector } from "../parse/matrix.js";
 
-const OPS_BUDGET = 5e8; // ~1.5s at the benchmarked rate — generous since this is opt-in, not automatic
-const MIN_CLUSTERABLE = 20;
-const MAX_CLUSTERABLE = 5000; // absolute ceiling regardless of how small the other axis is
+const BENCHMARKED_OPS_PER_SECOND = 3.4e8; // measured in Node; a real-world browser tab may be somewhat slower
+const ABSOLUTE_MAX_ITEMS = 20000; // circuit breaker only — see comment above
 
-/** Largest number of items clusterOrder() will reorder, given each item's vector length. */
-export function maxClusterableItems(vectorLength) {
-  if (vectorLength <= 0) return MAX_CLUSTERABLE;
-  const bound = Math.floor(Math.sqrt(OPS_BUDGET / vectorLength));
-  return Math.max(MIN_CLUSTERABLE, Math.min(MAX_CLUSTERABLE, bound));
+/** Rough wall-clock estimate for clustering `n` items with vector length `vectorLength`, for UI hinting only. */
+export function estimateClusterSeconds(n, vectorLength) {
+  return (n * n * vectorLength) / BENCHMARKED_OPS_PER_SECOND;
 }
 
 function jaccardSimilarity(a, b) {
@@ -62,17 +67,17 @@ const METRICS = { jaccard: jaccardSimilarity, euclidean: euclideanSimilarity };
  * genome columns compared by copy number, since Jaccard treats any
  * non-zero count the same as any other). Both cost the same per
  * comparison — the metric choice doesn't change the O(n^2*m) cost, only
- * what similarity means. Returns an array of indices into `items` giving
- * the new order, or the identity order if there are too many items for
- * the current vector length to stay responsive (see maxClusterableItems).
+ * what similarity means. This is a synchronous, main-thread-blocking
+ * call for however long the dataset takes — callers should run it via
+ * runBusy() (src/render/busy.js) and, for large n, warn the user first
+ * with estimateClusterSeconds(). Returns an array of indices into
+ * `items` giving the new order (identity order for n<=2, or above
+ * ABSOLUTE_MAX_ITEMS as a last-resort circuit breaker).
  */
 export function clusterOrder(items, opts = {}) {
   const n = items.length;
   const identity = items.map((_, i) => i);
-  if (n <= 2) return identity;
-
-  const vectorLength = items[0].length;
-  if (n > maxClusterableItems(vectorLength)) return identity;
+  if (n <= 2 || n > ABSOLUTE_MAX_ITEMS) return identity;
 
   const similarity = METRICS[opts.metric] || METRICS.jaccard;
 
