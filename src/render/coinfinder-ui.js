@@ -9,6 +9,7 @@ import { listTags } from "../analysis/tags.js";
 import { renderCategoryMatrix } from "./charts.js";
 import { renderPairTable } from "./pair-table.js";
 import { renderNetworkGraph } from "./network-graph.js";
+import { runBusy } from "./busy.js";
 import { downloadText } from "./download-util.js";
 import { pairsToDelimited } from "../../export/pair-export.js";
 
@@ -97,8 +98,16 @@ function renderPairCard(panel, data) {
   }
 
   function applyFilters() {
-    currentPairs = filterPairs(data, data.pairs, readCriteria());
-    handle.setPairs(currentPairs);
+    // filterPairs() is an O(n) scan and setPairs() re-sorts + rebuilds every
+    // row — cheap for a typical study, but at CoinFinder scale (hundreds of
+    // thousands to millions of resolved pairs) both can take real
+    // wall-clock time, so run them under the busy spinner rather than
+    // leaving a filter click or keystroke looking like it did nothing.
+    const criteria = readCriteria();
+    runBusy(() => {
+      currentPairs = filterPairs(data, data.pairs, criteria);
+      handle.setPairs(currentPairs);
+    });
   }
 
   const debouncedApply = debounce(applyFilters, 200);
