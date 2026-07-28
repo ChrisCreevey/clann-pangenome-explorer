@@ -3,6 +3,7 @@
 // functions over PangenomeData; no DOM here.
 
 import { copyCountAt } from "../parse/matrix.js";
+import { annotationSearchText } from "../parse/annotation.js";
 
 /**
  * Filter groups by frequency class, presence/sequence counts, average
@@ -25,7 +26,7 @@ export function filterGroups(data, criteria = {}) {
     if (maxSequencesTotal != null && g.sequencesTotal > maxSequencesTotal) return false;
     if (minAvgCopiesPerGenome != null && g.avgCopiesPerGenome < minAvgCopiesPerGenome) return false;
     if (maxAvgCopiesPerGenome != null && g.avgCopiesPerGenome > maxAvgCopiesPerGenome) return false;
-    if (annotationText && !(g.annotation || "").toLowerCase().includes(annotationText.toLowerCase())) return false;
+    if (annotationText && !annotationSearchText(data, g).includes(annotationText.toLowerCase())) return false;
     if (tags && tags.length && !tags.some((t) => g.tags.includes(t))) return false;
     return true;
   });

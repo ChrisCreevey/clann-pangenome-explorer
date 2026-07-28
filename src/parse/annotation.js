@@ -1,6 +1,14 @@
 // annotation.js — import an annotation table keyed either to gene groups
 // directly (Workflow A) or to individual genes across every genome
 // (Workflow B, rolled up to a per-group consensus). Build brief §6 Phase 5.
+//
+// Each upload adds a new column rather than overwriting the last one: the
+// matrix's own `group.annotation` (e.g. Roary's "Annotation" column) is
+// never touched, and every applyWorkflowA/B call records its result in
+// `data.meta.annotationSources` (one entry per upload, header taken from
+// the file's own column header) plus a matching per-group entry in
+// `group.annotationColumns[key]`, so a group can carry annotations from
+// several independently-uploaded files at once.
 
 import { splitDelimited, detectDelimiter } from "./shared.js";
 import { allGeneIdsForGroup } from "./matrix.js";
@@ -54,12 +62,68 @@ export function detectAnnotationWorkflow(data, text) {
 }
 
 /**
- * Workflow A: one row per group, joined directly onto group.annotation.
- * Returns { matched, unmatchedIds }.
+ * Register a new annotation source (or reuse an existing one, when
+ * `sourceKey` names an already-registered source, so re-applying the same
+ * upload with different consensus thresholds updates its column in place
+ * instead of appending a duplicate). Returns the source's key.
+ */
+function registerAnnotationSource(data, { header, workflow, sourceKey }) {
+  if (!data.meta.annotationSources) data.meta.annotationSources = [];
+  const sources = data.meta.annotationSources;
+
+  if (sourceKey) {
+    const existing = sources.find((s) => s.key === sourceKey);
+    if (existing) {
+      existing.header = header || existing.header;
+      existing.workflow = workflow;
+      return existing.key;
+    }
+  }
+
+  const existingHeaders = new Set(sources.map((s) => s.header));
+  let label = header || "Annotation";
+  let uniqueLabel = label, n = 2;
+  while (existingHeaders.has(uniqueLabel)) { uniqueLabel = `${label} (${n})`; n++; }
+
+  const key = sourceKey || `ann${sources.length + 1}_${Date.now().toString(36)}`;
+  sources.push({ key, header: uniqueLabel, workflow, matched: 0, unmatchedIds: [] });
+  return key;
+}
+
+/**
+ * Record one group's value for an annotation column, both as structured
+ * detail (`group.annotationColumns[key]`, for the detail card) and as flat
+ * properties (`group["ann_"+key]`, `group["annMatched_"+key]`) so the
+ * group table can sort/display them like any other column.
+ */
+function setAnnotationColumn(group, key, entry) {
+  if (!group.annotationColumns) group.annotationColumns = {};
+  group.annotationColumns[key] = entry;
+  group[`ann_${key}`] = entry.value;
+  if (entry.matchedCount != null) group[`annMatched_${key}`] = entry.matchedCount;
+}
+
+/** Combined free-text search surface for a group: the matrix's own annotation plus every uploaded annotation column's value. */
+export function annotationSearchText(data, group) {
+  const parts = [group.annotation];
+  for (const source of data.meta.annotationSources || []) {
+    const col = group.annotationColumns && group.annotationColumns[source.key];
+    if (col) parts.push(col.value);
+  }
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+/**
+ * Workflow A: one row per group, added as a new annotation column keyed by
+ * the file's own annotation-column header (rather than overwriting
+ * `group.annotation`). Returns { matched, unmatchedIds, key, header }.
  */
 export function applyWorkflowA(data, text, opts = {}) {
   const { header, rows } = parseRows(text);
   const { idCol, annotationCol } = { ...guessIdAndAnnotationColumns(header), ...opts };
+  const columnHeader = header[annotationCol] || "Annotation";
+  const key = registerAnnotationSource(data, { header: columnHeader, workflow: "A", sourceKey: opts.sourceKey });
+
   const byId = new Map(data.groups.map((g) => [g.groupId, g]));
   const unmatchedIds = [];
   let matched = 0;
@@ -68,30 +132,35 @@ export function applyWorkflowA(data, text, opts = {}) {
     const id = row[idCol];
     const group = byId.get(id);
     if (!group) { unmatchedIds.push(id); continue; }
-    group.annotation = row[annotationCol] || null;
-    group.consensusAnnotation = null;
-    group.consistencyScore = null;
-    group.annotationBreakdown = null;
+    setAnnotationColumn(group, key, { value: row[annotationCol] || null });
     matched++;
   }
-  data.meta.annotationWorkflow = "A";
-  return { matched, unmatchedIds };
+
+  const source = data.meta.annotationSources.find((s) => s.key === key);
+  Object.assign(source, { matched, unmatchedIds });
+  return { matched, unmatchedIds, key, header: source.header };
 }
 
 /**
- * Workflow B: one row per gene (across every genome), rolled up to a
- * per-group consensus (majority annotation), a consistency score
- * (majority count / total constituent genes seen), and the full
- * disagreement breakdown. A consensus is only accepted when it clears
+ * Workflow B: one row per gene (across every genome), added as a new
+ * annotation column holding, per group, the per-group consensus (majority
+ * annotation), a consistency score (majority count / total constituent
+ * genes seen), the number of constituent genes matched into that group
+ * (surfaced as its own "matched" indicator alongside the value), and the
+ * full disagreement breakdown. A consensus is only accepted when it clears
  * both `minCount` (absolute) and `minPercent` (share of the group's
- * annotated genes) — otherwise the group is left unannotated but its
- * breakdown is still recorded so the disagreement is visible rather than
- * silently dropped. Returns { matched, unmatchedIds, acceptedCount, rejectedCount }.
+ * annotated genes) — otherwise the group's value is left blank but its
+ * breakdown and matched count are still recorded so the disagreement stays
+ * visible rather than silently dropped.
+ * Returns { matched, unmatchedIds, acceptedCount, rejectedCount, key, header }.
  */
 export function applyWorkflowB(data, text, opts = {}) {
   const { minCount = 1, minPercent = 50 } = opts;
   const { header, rows } = parseRows(text);
   const { idCol, annotationCol } = { ...guessIdAndAnnotationColumns(header), ...opts };
+  const columnHeader = header[annotationCol] || "Annotation";
+  const key = registerAnnotationSource(data, { header: columnHeader, workflow: "B", sourceKey: opts.sourceKey });
+
   const geneIndex = buildGeneToGroupIndex(data);
   const byGroupId = new Map(data.groups.map((g) => [g.groupId, g]));
 
@@ -120,19 +189,16 @@ export function applyWorkflowB(data, text, opts = {}) {
     const top = breakdown[0];
     const accepted = top.count >= minCount && top.pct >= minPercent;
 
-    group.annotationBreakdown = breakdown;
-    group.consistencyScore = top.pct / 100;
-    if (accepted) {
-      group.consensusAnnotation = top.annotation;
-      group.annotation = top.annotation;
-      acceptedCount++;
-    } else {
-      group.consensusAnnotation = null;
-      group.annotation = null;
-      rejectedCount++;
-    }
+    setAnnotationColumn(group, key, {
+      value: accepted ? top.annotation : null,
+      matchedCount: total,
+      consistencyScore: top.pct / 100,
+      breakdown,
+    });
+    if (accepted) acceptedCount++; else rejectedCount++;
   }
 
-  data.meta.annotationWorkflow = "B";
-  return { matched, unmatchedIds, acceptedCount, rejectedCount };
+  const source = data.meta.annotationSources.find((s) => s.key === key);
+  Object.assign(source, { matched, unmatchedIds, acceptedCount, rejectedCount, minCount, minPercent });
+  return { matched, unmatchedIds, acceptedCount, rejectedCount, key, header: source.header };
 }

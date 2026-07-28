@@ -45,31 +45,59 @@ export function renderGroupDetail(container, data, group) {
     ["Sequences total", String(group.sequencesTotal)],
     ["Avg copies per genome", group.avgCopiesPerGenome.toFixed(2)],
   ];
-  if (group.consistencyScore != null) entries.splice(1, 0, ["Consensus consistency", `${(group.consistencyScore * 100).toFixed(1)}%`]);
   for (const [label, value] of entries) {
     dl.appendChild(el("dt", { text: label }));
     dl.appendChild(el("dd", { text: value }));
   }
   container.appendChild(dl);
 
-  if (group.annotationBreakdown && group.annotationBreakdown.length > 1) {
-    const details = document.createElement("details");
-    details.className = "sect";
-    const summary = document.createElement("summary");
-    summary.textContent = `Annotation disagreement (${group.annotationBreakdown.length} distinct calls)`;
-    details.appendChild(summary);
-    const table = document.createElement("table");
-    table.className = "data-table";
-    table.innerHTML = "<thead><tr><th>Annotation</th><th>Count</th><th>%</th></tr></thead>";
-    const tbody = document.createElement("tbody");
-    for (const b of group.annotationBreakdown) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${b.annotation}</td><td class="num">${b.count}</td><td class="num">${b.pct.toFixed(1)}%</td>`;
-      tbody.appendChild(tr);
+  // One block per uploaded annotation file — each is its own column, never
+  // overwriting another, so a group can carry several annotation sources.
+  for (const source of data.meta.annotationSources || []) {
+    const col = group.annotationColumns && group.annotationColumns[source.key];
+    if (!col) continue;
+
+    const block = document.createElement("div");
+    block.className = "sect";
+    const heading = document.createElement("h4");
+    heading.textContent = source.header;
+    block.appendChild(heading);
+
+    const sourceDl = document.createElement("dl");
+    sourceDl.className = "detail-dl";
+    sourceDl.appendChild(el("dt", { text: "Value" }));
+    sourceDl.appendChild(el("dd", { text: col.value || "—" }));
+    if (col.matchedCount != null) {
+      sourceDl.appendChild(el("dt", { text: "Constituent genes matched" }));
+      sourceDl.appendChild(el("dd", { text: String(col.matchedCount) }));
     }
-    table.appendChild(tbody);
-    details.appendChild(table);
-    container.appendChild(details);
+    if (col.consistencyScore != null) {
+      sourceDl.appendChild(el("dt", { text: "Consensus consistency" }));
+      sourceDl.appendChild(el("dd", { text: `${(col.consistencyScore * 100).toFixed(1)}%` }));
+    }
+    block.appendChild(sourceDl);
+
+    if (col.breakdown && col.breakdown.length > 1) {
+      const details = document.createElement("details");
+      details.className = "sect";
+      const summary = document.createElement("summary");
+      summary.textContent = `Annotation disagreement (${col.breakdown.length} distinct calls)`;
+      details.appendChild(summary);
+      const table = document.createElement("table");
+      table.className = "data-table";
+      table.innerHTML = "<thead><tr><th>Annotation</th><th>Count</th><th>%</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+      for (const b of col.breakdown) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${b.annotation}</td><td class="num">${b.count}</td><td class="num">${b.pct.toFixed(1)}%</td>`;
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      details.appendChild(table);
+      block.appendChild(details);
+    }
+
+    container.appendChild(block);
   }
 
   const geneDetails = document.createElement("details");

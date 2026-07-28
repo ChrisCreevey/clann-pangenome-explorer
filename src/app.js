@@ -30,6 +30,7 @@ const datasetMeta = document.getElementById("datasetMeta");
 let handle = null; // the live explorer instance, once a file is loaded
 let currentData = null; // the loaded PangenomeData, mutated in place by annotation/tagging
 let lastAnnotationText = null; // cached raw text, so "re-apply with these thresholds" doesn't need a re-upload
+let lastAnnotationSourceKey = null; // the column re-apply updates in place, rather than adding a duplicate
 
 function showError(msg) {
   errBox.textContent = msg;
@@ -48,6 +49,7 @@ function loadData(data, name) {
   datasetMeta.textContent = `${name}: ${data.meta.genomeCount} genomes, ${data.meta.groupCount} gene groups (${data.meta.format}).`;
   currentData = data;
   lastAnnotationText = null;
+  lastAnnotationSourceKey = null;
   document.getElementById("annotationStatus").textContent = "No annotation file loaded.";
   document.getElementById("annotationConsensusControls").style.display = "none";
   document.getElementById("tagListStatus").textContent = "";
@@ -223,7 +225,7 @@ const annotationStatus = document.getElementById("annotationStatus");
 const annotationConsensusControls = document.getElementById("annotationConsensusControls");
 document.getElementById("loadAnnotationBtn").addEventListener("click", () => annotationFileInput.click());
 
-function applyAnnotationText(text, name) {
+function applyAnnotationText(text, name, { reuseSourceKey = false } = {}) {
   if (!currentData) return;
   const workflow = detectAnnotationWorkflow(currentData, text);
   if (workflow === "unknown") {
@@ -231,16 +233,19 @@ function applyAnnotationText(text, name) {
     return;
   }
   lastAnnotationText = text;
+  const sourceKey = reuseSourceKey ? lastAnnotationSourceKey || undefined : undefined;
   if (workflow === "A") {
-    const { matched, unmatchedIds } = applyWorkflowA(currentData, text);
-    annotationStatus.textContent = `${name}: Workflow A — ${matched} group${matched === 1 ? "" : "s"} annotated` +
+    const { matched, unmatchedIds, key, header } = applyWorkflowA(currentData, text, { sourceKey });
+    lastAnnotationSourceKey = key;
+    annotationStatus.textContent = `${name}: Workflow A — added column "${header}", ${matched} group${matched === 1 ? "" : "s"} annotated` +
       (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched ID(s).` : ".");
     annotationConsensusControls.style.display = "none";
   } else {
     const minCount = Number(document.getElementById("annMinCount").value) || 1;
     const minPercent = Number(document.getElementById("annMinPercent").value) || 50;
-    const { matched, unmatchedIds, acceptedCount, rejectedCount } = applyWorkflowB(currentData, text, { minCount, minPercent });
-    annotationStatus.textContent = `${name}: Workflow B — ${matched} gene(s) matched, ${acceptedCount} group(s) reached consensus, ` +
+    const { matched, unmatchedIds, acceptedCount, rejectedCount, key, header } = applyWorkflowB(currentData, text, { minCount, minPercent, sourceKey });
+    lastAnnotationSourceKey = key;
+    annotationStatus.textContent = `${name}: Workflow B — added column "${header}", ${matched} gene(s) matched, ${acceptedCount} group(s) reached consensus, ` +
       `${rejectedCount} below threshold (breakdown still visible)` +
       (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched gene ID(s).` : ".");
     annotationConsensusControls.style.display = "";
@@ -261,7 +266,7 @@ annotationFileInput.addEventListener("change", async (e) => {
 
 document.getElementById("annReapply").addEventListener("click", () => {
   if (!lastAnnotationText) return;
-  applyAnnotationText(lastAnnotationText, "annotation file");
+  applyAnnotationText(lastAnnotationText, "annotation file", { reuseSourceKey: true });
 });
 
 // --- category tagging: keyword match or two-column list upload ---

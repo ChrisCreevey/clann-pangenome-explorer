@@ -3,17 +3,19 @@
 // than one (build brief §9d: no hierarchy, for simplicity).
 
 import { splitDelimited, detectDelimiter } from "../parse/shared.js";
+import { annotationSearchText } from "../parse/annotation.js";
 
 /**
- * Tag every group whose annotation text matches any of `terms`
- * (case-insensitive substring match) with `tagName`. Returns the number
- * of groups newly tagged (groups already carrying the tag aren't recounted).
+ * Tag every group whose annotation text (matrix annotation plus any
+ * uploaded annotation column) matches any of `terms` (case-insensitive
+ * substring match) with `tagName`. Returns the number of groups newly
+ * tagged (groups already carrying the tag aren't recounted).
  */
 export function keywordTag(data, tagName, terms) {
   const needles = terms.map((t) => t.trim().toLowerCase()).filter(Boolean);
   let count = 0;
   for (const group of data.groups) {
-    const haystack = (group.annotation || "").toLowerCase();
+    const haystack = annotationSearchText(data, group);
     if (!needles.some((t) => haystack.includes(t))) continue;
     if (!group.tags.includes(tagName)) { group.tags.push(tagName); count++; }
   }

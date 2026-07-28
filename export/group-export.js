@@ -37,10 +37,25 @@ export function geneIdTableCsv(data, groups, delimiter = ",") {
 const GROUP_COLUMNS = ["groupId", "annotation", "freqClass", "genomesPresentIn", "sequencesTotal", "avgCopiesPerGenome", "tags"];
 const GROUP_HEADER = ["group_id", "annotation", "freq_class", "genomes_present_in", "sequences_total", "avg_copies_per_genome", "tags"];
 
-/** Generic filtered-groups table export (matches the "Filtered groups" card's columns). */
-export function groupTableCsv(groups, delimiter = ",") {
-  const rows = groups.map((g) => GROUP_COLUMNS.map((col) => (Array.isArray(g[col]) ? g[col].join(";") : g[col])));
-  return toDelimited(GROUP_HEADER, rows, delimiter);
+/**
+ * Generic filtered-groups table export (matches the "Filtered groups" card's
+ * columns) — one column per uploaded annotation file, headed by that file's
+ * own annotation-column header, plus a matched-genes count column for any
+ * Workflow B source.
+ */
+export function groupTableCsv(data, groups, delimiter = ",") {
+  const columns = [...GROUP_COLUMNS];
+  const header = [...GROUP_HEADER];
+  for (const source of data.meta.annotationSources || []) {
+    columns.push(`ann_${source.key}`);
+    header.push(source.header);
+    if (source.workflow === "B") {
+      columns.push(`annMatched_${source.key}`);
+      header.push(`${source.header} — matched genes`);
+    }
+  }
+  const rows = groups.map((g) => columns.map((col) => (Array.isArray(g[col]) ? g[col].join(";") : g[col])));
+  return toDelimited(header, rows, delimiter);
 }
 
 /**

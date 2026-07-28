@@ -53,7 +53,7 @@ test("groupTableCsv includes tags joined with a semicolon", () => {
   const data = loadRoary();
   keywordTag(data, "AMR", ["beta-lactamase"]);
   const groupA = data.groups.find((g) => g.groupId === "groupA");
-  const csv = groupTableCsv([groupA]);
+  const csv = groupTableCsv(data, [groupA]);
   assert.equal(csv, `group_id,annotation,freq_class,genomes_present_in,sequences_total,avg_copies_per_genome,tags\ngroupA,beta-lactamase,core,3,3,1,AMR\n`);
 });
 

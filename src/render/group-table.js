@@ -23,6 +23,8 @@ function fmt(v) {
  */
 export function renderGroupTable(container, groups, opts = {}) {
   const cols = opts.columns || DEFAULT_COLS;
+  const labels = { ...COL_LABELS, ...(opts.columnLabels || {}) };
+  const numeric = new Set([...NUMERIC, ...(opts.numericColumns || [])]);
   let sortCol = opts.defaultSort || "genomesPresentIn";
   let sortAsc = false;
   let current = groups;
@@ -56,7 +58,7 @@ export function renderGroupTable(container, groups, opts = {}) {
     const trh = document.createElement("tr");
     for (const col of cols) {
       const th = document.createElement("th");
-      th.textContent = COL_LABELS[col] || col;
+      th.textContent = labels[col] || col;
       if (col === sortCol) th.className = "sorted" + (sortAsc ? " asc" : "");
       th.addEventListener("click", () => {
         if (sortCol === col) sortAsc = !sortAsc;
@@ -78,9 +80,9 @@ export function renderGroupTable(container, groups, opts = {}) {
       }
       for (const col of cols) {
         const td = document.createElement("td");
-        if (NUMERIC.has(col)) td.className = "num";
+        if (numeric.has(col)) td.className = "num";
         td.textContent = fmt(group[col]);
-        if (col === "annotation" && !group[col]) td.textContent = "—";
+        if ((col === "annotation" || col.startsWith("ann_")) && !group[col]) td.textContent = "—";
         tr.appendChild(td);
       }
       tbody.appendChild(tr);

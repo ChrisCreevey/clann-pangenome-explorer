@@ -237,7 +237,22 @@ export function mountTopFilterCards(panel, data) {
   const tableDiv = document.createElement("div");
   filteredCard.appendChild(tableDiv);
   panel.appendChild(filteredCard);
-  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"], onRowClick: (group) => openGroupDetail(data, group) });
+
+  const columns = [...DEFAULT_COLS];
+  const columnLabels = {};
+  const numericColumns = [];
+  for (const source of data.meta.annotationSources || []) {
+    columns.push(`ann_${source.key}`);
+    columnLabels[`ann_${source.key}`] = source.header;
+    if (source.workflow === "B") {
+      columns.push(`annMatched_${source.key}`);
+      columnLabels[`annMatched_${source.key}`] = `${source.header} — matched genes`;
+      numericColumns.push(`annMatched_${source.key}`);
+    }
+  }
+  columns.push("tags");
+
+  const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns, columnLabels, numericColumns, onRowClick: (group) => openGroupDetail(data, group) });
 
   active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA), filteredCard, countEl };
   writeSidebarCriteria(DEFAULT_CRITERIA);
@@ -245,7 +260,7 @@ export function mountTopFilterCards(panel, data) {
   updateFilteredCount();
 
   exportRow.querySelector("#filteredExportIds").addEventListener("click", () => downloadText("filtered-groups-gene-ids.txt", geneIdListText(data, active.currentGroups)));
-  exportRow.querySelector("#filteredExportCsv").addEventListener("click", () => downloadText("filtered-groups.csv", groupTableCsv(active.currentGroups), "text/csv"));
+  exportRow.querySelector("#filteredExportCsv").addEventListener("click", () => downloadText("filtered-groups.csv", groupTableCsv(active.data, active.currentGroups), "text/csv"));
   const crossLink = document.createElement("div");
   crossLink.className = "hint";
   crossLink.innerHTML = `Extract these sequences from your genome FASTA/GFF set, then explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>.`;
