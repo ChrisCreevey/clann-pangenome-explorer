@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
 import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../src/analysis/topfilter.js";
+import { applyWorkflowA } from "../src/parse/annotation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(path.join(__dirname, "fixtures", name), "utf8");
@@ -27,6 +28,20 @@ test("filterGroups: count and avg-copies bounds combine (AND)", () => {
   const data = loadRoary();
   const hits = filterGroups(data, { minGenomesPresentIn: 3, minAvgCopiesPerGenome: 1.1 });
   assert.deepEqual(hits.map((g) => g.groupId), ["groupD"]);
+});
+
+test("filterGroups: hasAnnotationValue restricts to groups with a non-empty value in a given uploaded annotation column", () => {
+  const data = loadRoary();
+  // groupC's cell is blank, groupD is unmatched entirely -> both should be excluded
+  const text = [
+    "group_id,annotation",
+    "groupA,beta-lactamase",
+    "groupB,hypothetical protein",
+    "groupC,",
+  ].join("\n");
+  const { key } = applyWorkflowA(data, text);
+  const hits = filterGroups(data, { hasAnnotationValue: [key] });
+  assert.deepEqual(hits.map((g) => g.groupId).sort(), ["groupA", "groupB"]);
 });
 
 test("patternMatch: present-in and absent-from both apply", () => {

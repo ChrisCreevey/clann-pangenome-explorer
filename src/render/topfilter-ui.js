@@ -38,7 +38,8 @@ function readSidebarCriteria() {
   const minAvgCopiesPerGenome = document.getElementById("fMinAvgCopies").value
     ? Number(document.getElementById("fMinAvgCopies").value) : undefined;
   const tags = [...document.querySelectorAll(".fTagCheckbox:checked")].map((cb) => cb.value);
-  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags };
+  const hasAnnotationValue = [...document.querySelectorAll(".fAnnSourceCheckbox:checked")].map((cb) => cb.value);
+  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags, hasAnnotationValue };
 }
 
 function writeSidebarCriteria(criteria) {
@@ -52,9 +53,12 @@ function writeSidebarCriteria(criteria) {
   document.querySelectorAll(".fTagCheckbox").forEach((cb) => {
     cb.checked = !!(criteria.tags && criteria.tags.includes(cb.value));
   });
+  document.querySelectorAll(".fAnnSourceCheckbox").forEach((cb) => {
+    cb.checked = !!(criteria.hasAnnotationValue && criteria.hasAnnotationValue.includes(cb.value));
+  });
 }
 
-const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [] };
+const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [], hasAnnotationValue: [] };
 
 /** Rebuild the tag checkboxes in the sidebar from the tags currently in use, preserving any that are still checked. */
 function populateTagCheckboxes(data) {
@@ -67,6 +71,19 @@ function populateTagCheckboxes(data) {
     <label class="row"><input type="checkbox" class="fTagCheckbox" value="${tag}" ${previouslyChecked.has(tag) ? "checked" : ""}> ${tag} (${count})</label>
   `).join("");
   container.querySelectorAll(".fTagCheckbox").forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
+}
+
+/** Rebuild the "has a value from" checkboxes from the annotation sources currently loaded, preserving any that are still checked. */
+function populateAnnotationSourceCheckboxes(data) {
+  const row = document.getElementById("fAnnSourcesRow");
+  const container = document.getElementById("fAnnSourcesContainer");
+  const previouslyChecked = new Set([...container.querySelectorAll(".fAnnSourceCheckbox:checked")].map((cb) => cb.value));
+  const sources = data.meta.annotationSources || [];
+  row.style.display = sources.length ? "" : "none";
+  container.innerHTML = sources.map(({ key, header }) => `
+    <label class="row"><input type="checkbox" class="fAnnSourceCheckbox" value="${key}" ${previouslyChecked.has(key) ? "checked" : ""}> ${header}</label>
+  `).join("");
+  container.querySelectorAll(".fAnnSourceCheckbox").forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
 }
 
 // module-level state, reassigned by mountGroupsCard() on every mount
@@ -229,6 +246,7 @@ function renderSingletonMultiCopyCard(panel, data) {
 export function mountGroupsCard(panel, data, opts = {}) {
   bindSidebarOnce();
   populateTagCheckboxes(data);
+  populateAnnotationSourceCheckboxes(data);
 
   const filteredCard = card("Groups");
   filteredCard.id = "filteredGroupsCard";
