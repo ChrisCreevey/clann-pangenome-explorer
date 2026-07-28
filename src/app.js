@@ -32,6 +32,19 @@ let currentData = null; // the loaded PangenomeData, mutated in place by annotat
 let lastAnnotationText = null; // cached raw text, so "re-apply with these thresholds" doesn't need a re-upload
 let lastAnnotationSourceKey = null; // the column re-apply updates in place, rather than adding a duplicate
 
+// Nothing here is saved anywhere — a reload, back-navigation, or (on
+// mobile) an accidental swipe-back gesture would silently discard
+// everything loaded/annotated/tagged/filtered so far. Once a file is
+// loaded, ask the browser to confirm before leaving. The confirmation
+// text itself is entirely browser-controlled (Chrome/Firefox/Safari all
+// show their own generic wording, ignoring any custom message) — setting
+// e.returnValue is just the standard way to trigger that prompt at all.
+window.addEventListener("beforeunload", (e) => {
+  if (!currentData) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
 function showError(msg) {
   errBox.textContent = msg;
   errBox.style.display = "block";
