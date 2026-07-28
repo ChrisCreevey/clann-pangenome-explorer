@@ -15,3 +15,29 @@ export function pairsToDelimited(pairs, delimiter = ",") {
   ]);
   return toDelimited(HEADER, rows, delimiter);
 }
+
+// source/target/interaction is Cytoscape's own network-table convention
+// (the SIF column order) — importing this file via File > Import > Network
+// from Table needs no column remapping. Associated and disassociated pairs
+// are listed together, distinguished by `interaction`, so the split (or
+// not) between them is a decision made in Cytoscape, not baked into the
+// export — this always reflects the full current filter selection, not
+// whatever subset the in-app network view is currently capped to drawing.
+const EDGE_TABLE_HEADER = [
+  "source", "target", "interaction", "significance",
+  "source_category", "target_category",
+  "source_freq_class", "target_freq_class",
+  "source_annotation", "target_annotation",
+  "source_tags", "target_tags",
+];
+
+export function pairsToCytoscapeEdgeTable(pairs, delimiter = ",") {
+  const rows = pairs.map((p) => [
+    p.groupIdA, p.groupIdB, p.direction, p.significance,
+    categoryFor(p.resolvedA), categoryFor(p.resolvedB),
+    p.resolvedA.freqClass, p.resolvedB.freqClass,
+    p.resolvedA.annotation, p.resolvedB.annotation,
+    p.resolvedA.tags.join(";"), p.resolvedB.tags.join(";"),
+  ]);
+  return toDelimited(EDGE_TABLE_HEADER, rows, delimiter);
+}

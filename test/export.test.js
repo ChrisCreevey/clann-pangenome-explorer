@@ -9,7 +9,7 @@ import { parseCoinfinderFile } from "../src/parse/coinfinder.js";
 import { resolvePairs } from "../src/analysis/pairs.js";
 import { keywordTag } from "../src/analysis/tags.js";
 import { geneIdListText, geneIdTableCsv, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../export/group-export.js";
-import { pairsToDelimited } from "../export/pair-export.js";
+import { pairsToDelimited, pairsToCytoscapeEdgeTable } from "../export/pair-export.js";
 import { escapeField, toDelimited } from "../export/csv-util.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,4 +75,22 @@ test("pairsToDelimited exports category/freqClass for both sides of each pair", 
   resolvePairs(data, assocRows, "associated");
   const csv = pairsToDelimited(data.pairs.filter((p) => p.groupIdA === "groupA" || p.groupIdB === "groupA"));
   assert.equal(csv, "group_id_a,category_a,freq_class_a,direction,significance,group_id_b,category_b,freq_class_b\ngroupA,AMR,core,associated,0.001,groupD,uncategorised,core\n");
+});
+
+test("pairsToCytoscapeEdgeTable uses Cytoscape's source/target/interaction column convention and lists both directions together", () => {
+  const data = loadRoary();
+  keywordTag(data, "AMR", ["beta-lactamase"]);
+  const assocRows = parseCoinfinderFile(fixture("coinfinder-associated.csv"), data);
+  const disassocRows = parseCoinfinderFile(fixture("coinfinder-disassociated.csv"), data);
+  resolvePairs(data, assocRows, "associated");
+  resolvePairs(data, disassocRows, "disassociated");
+
+  const csv = pairsToCytoscapeEdgeTable(data.pairs);
+  const lines = csv.trim().split("\n");
+  assert.equal(lines[0], "source,target,interaction,significance,source_category,target_category,source_freq_class,target_freq_class,source_annotation,target_annotation,source_tags,target_tags");
+  // both directions present in the same table, not split into separate exports
+  assert.ok(lines.some((l) => l.includes(",associated,")));
+  assert.ok(lines.some((l) => l.includes(",disassociated,")));
+  const groupARow = lines.find((l) => l.startsWith("groupA,groupD,"));
+  assert.equal(groupARow, "groupA,groupD,associated,0.001,AMR,uncategorised,core,core,beta-lactamase,transporter,AMR,");
 });

@@ -8,6 +8,10 @@
 
 import { categoryFor, crossCategoryPairs, sortBySignificance } from "../analysis/pairs.js";
 import { runBusy } from "./busy.js";
+import { downloadText } from "./download-util.js";
+import { pairsToCytoscapeEdgeTable } from "../../export/pair-export.js";
+
+const DEFAULT_TOP_N = 500;
 
 const FREQ_CLASS_COLOR = { core: "#0B7268", softcore: "#5F6E33", shell: "#B97E1C", cloud: "#A94B2E" };
 const ASSOC_COLOR = "#0B7268", DISASSOC_COLOR = "#A94B2E";
@@ -34,6 +38,33 @@ const SLOW_WARNING_SECONDS = 1.5;
 /** Rough wall-clock estimate for laying out `nodeCount` nodes, for UI hinting only. */
 export function estimateLayoutSeconds(nodeCount, iterations = ITERATIONS) {
   return ((nodeCount * (nodeCount - 1)) / 2 * iterations) / BENCHMARKED_PAIR_OPS_PER_SECOND;
+}
+
+/**
+ * Restrict to the `topN` highest-degree nodes (by edge count within this
+ * filtered selection) and the induced edges among them — i.e. drop edges
+ * to any excluded node, then drop nodes left with no edges as a result.
+ * There's no value in laying out a graph's low-connectivity long tail
+ * (the common case once a CoinFinder file resolves against a large
+ * pangenome): a node's rough position in a force layout is driven by its
+ * neighbours, so a barely-connected node just drifts to wherever there's
+ * space and adds nothing readable. `topN` of `null`/`Infinity` (or a
+ * count already at or under it) is a no-op.
+ */
+export function degreeCap(nodeIds, edges, topN) {
+  if (topN == null || nodeIds.length <= topN) return { nodeIds, edges };
+
+  const degree = new Map(nodeIds.map((id) => [id, 0]));
+  for (const e of edges) {
+    degree.set(e.a, (degree.get(e.a) || 0) + 1);
+    degree.set(e.b, (degree.get(e.b) || 0) + 1);
+  }
+  const topIds = new Set(
+    [...degree.entries()].sort((a, b) => b[1] - a[1]).slice(0, topN).map(([id]) => id)
+  );
+  const cappedEdges = edges.filter((e) => topIds.has(e.a) && topIds.has(e.b));
+  const usedIds = [...new Set(cappedEdges.flatMap((e) => [e.a, e.b]))];
+  return { nodeIds: usedIds, edges: cappedEdges };
 }
 
 function categoryColor(categories, category) {
@@ -136,8 +167,11 @@ export function renderNetworkGraph(container, data) {
     <label>Max significance <input type="text" id="ngMaxSig" placeholder="no cap" style="width:70px"></label>
     <label><input type="checkbox" id="ngCrossOnly"> Cross-category only</label>
     <label><input type="checkbox" id="ngHighlightTop"> Highlight top 20 by significance</label>
+    <label>Show top <input type="number" id="ngTopN" value="${DEFAULT_TOP_N}" min="10" step="10" style="width:70px"> most-connected groups</label>
+    <label><input type="checkbox" id="ngNoCap"> Show all filtered groups (no cap)</label>
     <button class="act" id="ngDraw" style="width:auto">Draw network</button>
     <button class="act" id="ngExportSvg" style="width:auto">Export SVG</button>
+    <button class="act" id="ngExportEdges" style="width:auto">Export edge table (.csv)</button>
   `;
   container.appendChild(controls);
   const note = document.createElement("div");
@@ -161,8 +195,13 @@ export function renderNetworkGraph(container, data) {
   const useCategories = allCategories.length > 0;
   const groupById = new Map(data.groups.map((g) => [g.groupId, g])); // built once, not per node — avoids an O(nodes*groups) Array.find per draw
 
-  /** Cheap: apply the direction/significance/cross-category filters, no layout. */
-  function currentSelection() {
+  /**
+   * Cheap: apply the direction/significance/cross-category filters, no
+   * layout, no degree cap. This is "the current selection" for export
+   * purposes — associated and disassociated pairs listed together,
+   * regardless of what the in-app view is currently capped to drawing.
+   */
+  function fullSelection() {
     const direction = container.querySelector("#ngDirection").value;
     const maxSigRaw = container.querySelector("#ngMaxSig").value.trim();
     const maxSig = maxSigRaw ? Number(maxSigRaw) : null;
@@ -177,8 +216,17 @@ export function renderNetworkGraph(container, data) {
     return { pairs, nodeIds, edges };
   }
 
+  /** The subset actually laid out/drawn: fullSelection() restricted to the top-N most-connected nodes (or uncapped, if "no cap" is checked). */
+  function cappedSelection(full) {
+    const topN = container.querySelector("#ngNoCap").checked ? null : (Number(container.querySelector("#ngTopN").value) || DEFAULT_TOP_N);
+    const { nodeIds, edges } = degreeCap(full.nodeIds, full.edges, topN);
+    return { pairs: edges.map((e) => e.pair), nodeIds, edges, cappedFrom: full.nodeIds.length > nodeIds.length ? full.nodeIds.length : null };
+  }
+
   const drawBtn = container.querySelector("#ngDraw");
-  let pendingSelection = null; // the selection that would be drawn next
+  let lastFullSelection = null; // for the edge-table export — always uncapped
+  let lastCappedNote = ""; // " — showing the top N most-connected of M groups...", reused by runLayout's own note text
+  let pendingSelection = null; // the (capped) selection that would be drawn next
   let drawn = false; // whether pendingSelection has actually been laid out yet — guards the "Highlight" checkbox from bypassing the slow-draw gate
 
   /**
@@ -190,35 +238,47 @@ export function renderNetworkGraph(container, data) {
    * rather than auto-redrawing on every filter change — same honesty
    * principle as clustering.js/heatmap.js, adapted with an extra opt-in
    * step because the cost here is high enough that a stray filter tweak
-   * could otherwise hang the tab with no warning at all.
+   * could otherwise hang the tab with no warning at all. The top-N degree
+   * cap (applied before this gating math, not after) is what keeps typical
+   * filtered selections — even a large one — comfortably under
+   * SLOW_WARNING_SECONDS without needing that extra click at all.
    */
   function refreshNote({ auto = true } = {}) {
-    const { pairs, nodeIds, edges } = currentSelection();
-    const tooManyNodes = nodeIds.length > ABSOLUTE_MAX_NODES;
-    const tooManyEdges = edges.length > ABSOLUTE_MAX_EDGES;
-    const estSeconds = estimateLayoutSeconds(nodeIds.length);
+    // Filtering/capping is at minimum an O(pairs) scan, and the cheap tier
+    // below also runs the actual layout — all synchronous, so cover the
+    // whole thing with the busy spinner rather than just the layout step.
+    runBusy(() => {
+      const full = fullSelection();
+      lastFullSelection = full;
+      const { pairs, nodeIds, edges, cappedFrom } = cappedSelection(full);
+      const cappedNote = cappedFrom ? ` — showing the top ${nodeIds.length} most-connected of ${cappedFrom} groups in the current filter` : "";
+      lastCappedNote = cappedNote;
+      const tooManyNodes = nodeIds.length > ABSOLUTE_MAX_NODES;
+      const tooManyEdges = edges.length > ABSOLUTE_MAX_EDGES;
+      const estSeconds = estimateLayoutSeconds(nodeIds.length);
 
-    drawn = false;
+      drawn = false;
 
-    if (tooManyNodes || tooManyEdges) {
-      note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups — too many ${tooManyNodes ? `groups (over ${ABSOLUTE_MAX_NODES})` : `pairs (over ${ABSOLUTE_MAX_EDGES})`} to lay out as a network. Narrow the direction, significance, or cross-category filters above, or use the pair table's filters instead.`;
-      drawBtn.disabled = true;
-      scene.innerHTML = "";
-      pendingSelection = null;
-      return;
-    }
+      if (tooManyNodes || tooManyEdges) {
+        note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups${cappedNote} — too many ${tooManyNodes ? `groups (over ${ABSOLUTE_MAX_NODES})` : `pairs (over ${ABSOLUTE_MAX_EDGES})`} to lay out as a network. Lower "Show top", narrow the direction/significance/cross-category filters above, or use the pair table's filters instead.`;
+        drawBtn.disabled = true;
+        scene.innerHTML = "";
+        pendingSelection = null;
+        return;
+      }
 
-    if (estSeconds > SLOW_WARNING_SECONDS) {
-      note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups — laying this out will take roughly ${Math.ceil(estSeconds)}s and freeze the page until it finishes. Click "Draw network" to continue.`;
+      if (estSeconds > SLOW_WARNING_SECONDS) {
+        note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups${cappedNote} — laying this out will take roughly ${Math.ceil(estSeconds)}s and freeze the page until it finishes. Click "Draw network" to continue.`;
+        drawBtn.disabled = false;
+        scene.innerHTML = "";
+        pendingSelection = { pairs, nodeIds, edges };
+        return;
+      }
+
       drawBtn.disabled = false;
-      scene.innerHTML = "";
       pendingSelection = { pairs, nodeIds, edges };
-      return;
-    }
-
-    drawBtn.disabled = false;
-    pendingSelection = { pairs, nodeIds, edges };
-    if (auto) runLayout(pendingSelection);
+      if (auto) runLayout(pendingSelection);
+    });
   }
 
   function runLayout({ pairs, nodeIds, edges }) {
@@ -228,7 +288,7 @@ export function renderNetworkGraph(container, data) {
       ? new Set(sortBySignificance(data.pairs).slice(0, 20).map((p) => `${p.groupIdA}|${p.groupIdB}|${p.direction}`))
       : null;
 
-    note.textContent = `${pairs.length} pair${pairs.length === 1 ? "" : "s"} shown`;
+    note.textContent = `${pairs.length} pair${pairs.length === 1 ? "" : "s"} shown${lastCappedNote}`;
     scene.innerHTML = "";
     if (!nodeIds.length) return;
 
@@ -265,9 +325,13 @@ export function renderNetworkGraph(container, data) {
     }
   }
 
-  container.querySelectorAll("#ngDirection, #ngMaxSig, #ngCrossOnly").forEach((el) => {
+  container.querySelectorAll("#ngDirection, #ngMaxSig, #ngCrossOnly, #ngTopN").forEach((el) => {
     el.addEventListener("input", () => refreshNote());
     el.addEventListener("change", () => refreshNote());
+  });
+  container.querySelector("#ngNoCap").addEventListener("change", (e) => {
+    container.querySelector("#ngTopN").disabled = e.target.checked;
+    refreshNote();
   });
   // Highlighting doesn't change which nodes/edges need laying out, just
   // how existing ones are drawn — cheap enough to always redraw immediately
@@ -300,6 +364,11 @@ export function renderNetworkGraph(container, data) {
   svg.addEventListener("pointermove", (e) => { if (!drag) return; view.x = e.clientX - drag.x; view.y = e.clientY - drag.y; applyView(); });
   svg.addEventListener("pointerup", () => { drag = null; });
   svg.addEventListener("dblclick", () => { view.k = 1; view.x = 0; view.y = 0; applyView(); });
+
+  container.querySelector("#ngExportEdges").addEventListener("click", () => {
+    const pairs = (lastFullSelection || fullSelection()).pairs;
+    downloadText("pangenome-network-edges.csv", pairsToCytoscapeEdgeTable(pairs, ","), "text/csv");
+  });
 
   container.querySelector("#ngExportSvg").addEventListener("click", () => {
     const clone = svg.cloneNode(true);
