@@ -44,6 +44,20 @@ test("filterGroups: hasAnnotationValue restricts to groups with a non-empty valu
   assert.deepEqual(hits.map((g) => g.groupId).sort(), ["groupA", "groupB"]);
 });
 
+test("filterGroups: missingAnnotationValue restricts to groups with no value (blank cell or never matched) in a given uploaded annotation column", () => {
+  const data = loadRoary();
+  const text = [
+    "group_id,annotation",
+    "groupA,beta-lactamase",
+    "groupB,hypothetical protein",
+    "groupC,",
+  ].join("\n");
+  const { key } = applyWorkflowA(data, text);
+  const hits = filterGroups(data, { missingAnnotationValue: [key] });
+  // groupC: matched but blank cell; groupD: never matched at all — both count as "missing"
+  assert.deepEqual(hits.map((g) => g.groupId).sort(), ["groupC", "groupD"]);
+});
+
 test("patternMatch: present-in and absent-from both apply", () => {
   const data = loadRoary();
   // groupB is present in G1/G2, absent from G3

@@ -15,7 +15,7 @@ export function filterGroups(data, criteria = {}) {
     freqClasses, minGenomesPresentIn, maxGenomesPresentIn,
     minSequencesTotal, maxSequencesTotal,
     minAvgCopiesPerGenome, maxAvgCopiesPerGenome,
-    annotationText, tags, hasAnnotationValue,
+    annotationText, tags, hasAnnotationValue, missingAnnotationValue,
   } = criteria;
 
   return data.groups.filter((g) => {
@@ -30,6 +30,8 @@ export function filterGroups(data, criteria = {}) {
     if (tags && tags.length && !tags.some((t) => g.tags.includes(t))) return false;
     if (hasAnnotationValue && hasAnnotationValue.length
       && !hasAnnotationValue.some((key) => g.annotationColumns && g.annotationColumns[key] && g.annotationColumns[key].value)) return false;
+    if (missingAnnotationValue && missingAnnotationValue.length
+      && !missingAnnotationValue.some((key) => !(g.annotationColumns && g.annotationColumns[key] && g.annotationColumns[key].value))) return false;
     return true;
   });
 }

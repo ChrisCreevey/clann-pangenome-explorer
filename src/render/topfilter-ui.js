@@ -39,7 +39,8 @@ function readSidebarCriteria() {
     ? Number(document.getElementById("fMinAvgCopies").value) : undefined;
   const tags = [...document.querySelectorAll(".fTagCheckbox:checked")].map((cb) => cb.value);
   const hasAnnotationValue = [...document.querySelectorAll(".fAnnSourceCheckbox:checked")].map((cb) => cb.value);
-  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags, hasAnnotationValue };
+  const missingAnnotationValue = [...document.querySelectorAll(".fAnnMissingCheckbox:checked")].map((cb) => cb.value);
+  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags, hasAnnotationValue, missingAnnotationValue };
 }
 
 function writeSidebarCriteria(criteria) {
@@ -56,9 +57,12 @@ function writeSidebarCriteria(criteria) {
   document.querySelectorAll(".fAnnSourceCheckbox").forEach((cb) => {
     cb.checked = !!(criteria.hasAnnotationValue && criteria.hasAnnotationValue.includes(cb.value));
   });
+  document.querySelectorAll(".fAnnMissingCheckbox").forEach((cb) => {
+    cb.checked = !!(criteria.missingAnnotationValue && criteria.missingAnnotationValue.includes(cb.value));
+  });
 }
 
-const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [], hasAnnotationValue: [] };
+const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [], hasAnnotationValue: [], missingAnnotationValue: [] };
 
 /** Rebuild the tag checkboxes in the sidebar from the tags currently in use, preserving any that are still checked. */
 function populateTagCheckboxes(data) {
@@ -73,17 +77,22 @@ function populateTagCheckboxes(data) {
   container.querySelectorAll(".fTagCheckbox").forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
 }
 
-/** Rebuild the "has a value from" checkboxes from the annotation sources currently loaded, preserving any that are still checked. */
-function populateAnnotationSourceCheckboxes(data) {
-  const row = document.getElementById("fAnnSourcesRow");
-  const container = document.getElementById("fAnnSourcesContainer");
-  const previouslyChecked = new Set([...container.querySelectorAll(".fAnnSourceCheckbox:checked")].map((cb) => cb.value));
+/** Rebuild one "has/missing a value from" checkbox group from the annotation sources currently loaded, preserving any that are still checked. */
+function populateAnnotationCheckboxGroup(data, rowId, containerId, checkboxClass) {
+  const row = document.getElementById(rowId);
+  const container = document.getElementById(containerId);
+  const previouslyChecked = new Set([...container.querySelectorAll(`.${checkboxClass}:checked`)].map((cb) => cb.value));
   const sources = data.meta.annotationSources || [];
   row.style.display = sources.length ? "" : "none";
   container.innerHTML = sources.map(({ key, header }) => `
-    <label class="row"><input type="checkbox" class="fAnnSourceCheckbox" value="${key}" ${previouslyChecked.has(key) ? "checked" : ""}> ${header}</label>
+    <label class="row"><input type="checkbox" class="${checkboxClass}" value="${key}" ${previouslyChecked.has(key) ? "checked" : ""}> ${header}</label>
   `).join("");
-  container.querySelectorAll(".fAnnSourceCheckbox").forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
+  container.querySelectorAll(`.${checkboxClass}`).forEach((cb) => cb.addEventListener("change", () => applyCriteria(readSidebarCriteria())));
+}
+
+function populateAnnotationSourceCheckboxes(data) {
+  populateAnnotationCheckboxGroup(data, "fAnnSourcesRow", "fAnnSourcesContainer", "fAnnSourceCheckbox");
+  populateAnnotationCheckboxGroup(data, "fAnnMissingRow", "fAnnMissingContainer", "fAnnMissingCheckbox");
 }
 
 // module-level state, reassigned by mountGroupsCard() on every mount
