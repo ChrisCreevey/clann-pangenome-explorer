@@ -77,6 +77,7 @@ function applyCriteria(criteria, { pushHistory = true } = {}) {
   if (pushHistory) active.history.push(criteria);
   active.currentGroups = filterGroups(active.data, criteria);
   active.groupTableHandle.setGroups(active.currentGroups);
+  active.onFilterChange?.(active.currentGroups);
   document.getElementById("fUndo").disabled = active.history.length <= 1;
   updateFilteredCount();
   active.filteredCard?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -221,9 +222,11 @@ function renderSingletonMultiCopyCard(panel, data) {
 /**
  * Mount the "Groups" card (the sidebar-filtered group table) into `panel`.
  * Placed right after the frequency-class summary so the detailed group
- * list is upfront, ahead of the other summary charts.
+ * list is upfront, ahead of the other summary charts. `opts.onFilterChange`
+ * (optional) is called with the new filtered group list on every filter
+ * edit — used to keep the heatmap's rows in sync with the sidebar filters.
  */
-export function mountGroupsCard(panel, data) {
+export function mountGroupsCard(panel, data, opts = {}) {
   bindSidebarOnce();
   populateTagCheckboxes(data);
 
@@ -260,7 +263,7 @@ export function mountGroupsCard(panel, data) {
 
   const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns, columnLabels, numericColumns, onRowClick: (group) => openGroupDetail(data, group) });
 
-  active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA), filteredCard, countEl };
+  active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA), filteredCard, countEl, onFilterChange: opts.onFilterChange };
   writeSidebarCriteria(DEFAULT_CRITERIA);
   document.getElementById("fUndo").disabled = true;
   updateFilteredCount();

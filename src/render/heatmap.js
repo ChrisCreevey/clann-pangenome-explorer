@@ -30,22 +30,27 @@ const EMPTY_RGB = [230, 226, 214]; // --stone-200-ish, "absent" cell
 const MIN_SCALE = 0.2, MAX_SCALE = 40;
 
 /**
- * Mount a heatmap into `container`. `data` is PangenomeData.
- * Returns a handle with setSort(mode) where mode is 'frequency' | 'cluster'.
+ * Mount a heatmap into `container`. `data` is PangenomeData. `opts.groups`
+ * (defaults to every group) is the row subset to rasterise — passing the
+ * currently-filtered groups lets rows narrow to match the sidebar filters,
+ * which also shrinks the O(n²) clustering problem on that subset.
+ * Returns a handle with setSort(mode), setSortCol(mode), and
+ * setGroups(newGroups) to re-rasterise against a new row subset in place.
  */
-export function renderHeatmap(container, data) {
+export function renderHeatmap(container, data, opts = {}) {
   container.innerHTML = "";
 
   const genomeNames = data.genomes.map((g) => g.name);
   const genomeCount = genomeNames.length;
-  const groups = data.groups;
+  let groups = opts.groups || data.groups;
 
   if (!genomeCount || !groups.length) {
     const note = document.createElement("div");
     note.className = "empty-note";
-    note.textContent = "No data for the heatmap.";
+    note.id = "hmEmptyNote";
+    note.textContent = genomeCount ? "No groups match the current filters." : "No data for the heatmap.";
     container.appendChild(note);
-    return { setSort() {} };
+    return { setSort() {}, setSortCol() {}, setGroups() {} };
   }
 
   const controls = document.createElement("div");
@@ -82,6 +87,7 @@ export function renderHeatmap(container, data) {
   let colOrder = data.genomes.map((g) => g.index);
   let offscreen = null;
   let view = { k: 1, x: 0, y: 0 };
+  let rowSortMode = "frequency";
 
   function rowColor(group) {
     return FREQ_CLASS_RGB[group.freqClass] || EMPTY_RGB;
@@ -143,6 +149,7 @@ export function renderHeatmap(container, data) {
   const SLOW_WARNING_SECONDS = 1.5;
 
   function applySort(mode) {
+    rowSortMode = mode;
     const note = container.querySelector("#hmNote");
     if (mode === "cluster") {
       const estSeconds = estimateClusterSeconds(groups.length, genomeCount);
@@ -282,6 +289,19 @@ export function renderHeatmap(container, data) {
     setSortCol(mode) {
       container.querySelector("#hmSortCol").value = mode;
       applyColumnSort(mode);
+    },
+    /** Re-rasterise against a new row subset (e.g. the sidebar-filtered groups), keeping the current sort mode and column order. */
+    setGroups(newGroups) {
+      groups = newGroups;
+      const note = container.querySelector("#hmNote");
+      if (!groups.length) {
+        canvasWrap.style.display = "none";
+        note.textContent = "No groups match the current filters.";
+        return;
+      }
+      canvasWrap.style.display = "";
+      container.querySelector("#hmSort").value = rowSortMode;
+      applySort(rowSortMode);
     },
   };
 }

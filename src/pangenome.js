@@ -57,7 +57,12 @@ export function mountExplorer(container, data) {
   renderFrequencyClassTable(freqTableDiv, data);
   panel.appendChild(freqCard);
 
-  mountGroupsCard(panel, data);
+  // heatmapHandle is assigned once the heatmap mounts, below — the Groups
+  // card mounts first (so the detailed group list appears upfront), but its
+  // onFilterChange callback only actually fires on a later filter edit, by
+  // which point the heatmap has already mounted.
+  let heatmapHandle = null;
+  mountGroupsCard(panel, data, { onFilterChange: (groups) => heatmapHandle?.setGroups(groups) });
 
   const spectrumCard = card("Gene frequency spectrum");
   const spectrumDiv = document.createElement("div");
@@ -78,10 +83,14 @@ export function mountExplorer(container, data) {
   panel.appendChild(accumCard);
 
   const heatmapCard = card("Presence/absence heatmap");
+  const heatmapHint = document.createElement("div");
+  heatmapHint.className = "hint";
+  heatmapHint.textContent = "Rows follow the sidebar filters (Filters panel) — narrowing them also shrinks the clustering problem.";
+  heatmapCard.appendChild(heatmapHint);
   const heatmapDiv = document.createElement("div");
   heatmapCard.appendChild(heatmapDiv);
   panel.appendChild(heatmapCard); // must be in the document before renderHeatmap wires up its controls via getElementById
-  renderHeatmap(heatmapDiv, data);
+  heatmapHandle = renderHeatmap(heatmapDiv, data);
 
   mountTopFilterExtras(panel, data);
   mountCoinfinderCards(panel, data);
