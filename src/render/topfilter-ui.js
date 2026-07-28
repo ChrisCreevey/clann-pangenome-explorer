@@ -76,6 +76,13 @@ function applyCriteria(criteria, { pushHistory = true } = {}) {
   active.currentGroups = filterGroups(active.data, criteria);
   active.groupTableHandle.setGroups(active.currentGroups);
   document.getElementById("fUndo").disabled = active.history.length <= 1;
+  updateFilteredCount();
+  active.filteredCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateFilteredCount() {
+  if (!active || !active.countEl) return;
+  active.countEl.textContent = `${active.currentGroups.length}/${active.data.groups.length} groups selected`;
 }
 
 // --- bind sidebar listeners exactly once ---
@@ -215,6 +222,11 @@ export function mountTopFilterCards(panel, data) {
   populateTagCheckboxes(data);
 
   const filteredCard = card("Filtered groups");
+  filteredCard.id = "filteredGroupsCard";
+  const countEl = document.createElement("div");
+  countEl.className = "hint";
+  countEl.id = "filteredGroupsCount";
+  filteredCard.appendChild(countEl);
   const exportRow = document.createElement("div");
   exportRow.className = "chart-controls";
   exportRow.innerHTML = `
@@ -227,9 +239,10 @@ export function mountTopFilterCards(panel, data) {
   panel.appendChild(filteredCard);
   const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns: [...DEFAULT_COLS, "tags"], onRowClick: (group) => openGroupDetail(data, group) });
 
-  active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA) };
+  active = { data, groupTableHandle, history: [DEFAULT_CRITERIA], currentGroups: filterGroups(data, DEFAULT_CRITERIA), filteredCard, countEl };
   writeSidebarCriteria(DEFAULT_CRITERIA);
   document.getElementById("fUndo").disabled = true;
+  updateFilteredCount();
 
   exportRow.querySelector("#filteredExportIds").addEventListener("click", () => downloadText("filtered-groups-gene-ids.txt", geneIdListText(data, active.currentGroups)));
   exportRow.querySelector("#filteredExportCsv").addEventListener("click", () => downloadText("filtered-groups.csv", groupTableCsv(active.currentGroups), "text/csv"));
