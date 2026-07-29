@@ -101,8 +101,13 @@ export function mountExplorer(container, data) {
   genomeCard.appendChild(qcHint);
   const genomeDiv = document.createElement("div");
   genomeCard.appendChild(genomeDiv);
+  const qcTableHint = document.createElement("div");
+  qcTableHint.className = "hint";
+  qcTableHint.style.marginTop = "10px";
+  qcTableHint.textContent = "Severity: how far past its cutoff a genome sits (cutoff ÷ value for low core, value ÷ cutoff for high unique) — 1.0 sits right at the cutoff, higher is worse. If a genome trips both rules, this is the worse of the two.";
+  genomeCard.appendChild(qcTableHint);
   const qcTableDiv = document.createElement("div");
-  qcTableDiv.style.marginTop = "10px";
+  qcTableDiv.style.marginTop = "6px";
   genomeCard.appendChild(qcTableDiv);
   panel.appendChild(genomeCard);
 
