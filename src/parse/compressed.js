@@ -135,14 +135,19 @@ export async function extractZipEntry(bytes, entry) {
  * should read the file as plain text itself.
  */
 export async function decompressIfNeeded(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  // Sniff just the first few bytes so an uncompressed multi-GB file isn't
+  // read into memory twice (once here, once by the caller's plain-text
+  // fallback) just to discover it isn't gzip/zip.
+  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
 
-  if (looksLikeGzip(bytes)) {
+  if (looksLikeGzip(head)) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const out = await gunzip(bytes);
     return { text: new TextDecoder().decode(out), filename: file.name.replace(/\.gz$/i, "") };
   }
 
-  if (looksLikeZip(bytes)) {
+  if (looksLikeZip(head)) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
     // Skip directory entries and macOS's AppleDouble metadata files
     // (__MACOSX/._real-file.csv) — Finder/Archive Utility adds one of
     // these alongside every real file it zips, and it would otherwise be

@@ -42,7 +42,10 @@ function countLeadingMetadataColumns(header) {
 }
 
 export function parseRoary(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  // Split on \n, \r\n, or a bare \r (classic-Mac-style line endings, which
+  // some export tools still produce) — a plain /\r?\n/ never matches a lone
+  // \r, so a file using it collapses into a single "line" and looks empty.
+  const lines = text.split(/\r\n|\r|\n/).filter((l) => l.length > 0);
   if (lines.length < 2) throw new Error("Roary file has no data rows.");
   const delimiter = detectDelimiter(lines[0]);
   const header = splitDelimited(lines[0], delimiter);
@@ -50,13 +53,14 @@ export function parseRoary(text) {
   const genomeNames = header.slice(metaColCount);
   const annotationIdx = header.findIndex((h) => /^annotation$/i.test(h.trim()));
 
-  const groups = lines.slice(1).map((line) => {
-    const row = splitDelimited(line, delimiter);
+  const groups = new Array(lines.length - 1);
+  for (let i = 1; i < lines.length; i++) {
+    const row = splitDelimited(lines[i], delimiter);
     const groupId = row[0];
     const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
     const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
-    return { groupId, representativeId: groupId, annotation, rawRow };
-  });
+    groups[i - 1] = { groupId, representativeId: groupId, annotation, rawRow };
+  }
 
   return { genomeNames, groups };
 }

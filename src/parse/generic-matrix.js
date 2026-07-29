@@ -40,7 +40,7 @@ function looksLikeGroupIdColumn(rows, colIndex) {
  *   mapping), they're used directly and ambiguity checks are skipped.
  */
 export function parseGenericMatrix(text, opts = {}) {
-  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  const lines = text.split(/\r\n|\r|\n/).filter((l) => l.length > 0);
   if (lines.length < 2) throw new Error("File has no data rows.");
   const delimiter = detectDelimiter(lines[0]);
   const header = splitDelimited(lines[0], delimiter);

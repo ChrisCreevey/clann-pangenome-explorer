@@ -26,7 +26,9 @@ export { ColumnMappingNeeded, splitDelimited, detectDelimiter, parsePresenceCell
  */
 export function detectFormat(filename, text) {
   const name = (filename || "").toLowerCase();
-  const firstLine = text.split(/\r?\n/, 1)[0] || "";
+  // match, not split(text, 1): split still scans/copies the whole string
+  // looking for further separators on huge files; match stops at the first hit.
+  const firstLine = (text.match(/^[^\r\n]*/) || [""])[0];
   const delimiter = detectDelimiter(firstLine);
   const header = splitDelimited(firstLine, delimiter);
 

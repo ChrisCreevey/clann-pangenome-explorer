@@ -25,7 +25,7 @@ export function buildGeneToGroupIndex(data) {
 }
 
 function parseRows(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  const lines = text.split(/\r\n|\r|\n/).filter((l) => l.length > 0);
   if (lines.length < 2) throw new Error("Annotation file has no data rows.");
   const delimiter = detectDelimiter(lines[0]);
   const header = splitDelimited(lines[0], delimiter);
