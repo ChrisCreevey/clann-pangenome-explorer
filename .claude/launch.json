@@ -4,7 +4,7 @@
     {
       "name": "static-server",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8934"],
+      "runtimeArgs": [".claude/no-cache-server.py", "8934"],
       "port": 8934
     }
   ]

@@ -68,7 +68,28 @@ function parseHeaderLine(headerLine) {
   const metaColCount = countLeadingMetadataColumns(header);
   const genomeNames = header.slice(metaColCount);
   const annotationIdx = header.findIndex((h) => /^annotation$/i.test(h.trim()));
-  return { delimiter, metaColCount, genomeNames, annotationIdx };
+  // Roary's own reconstructed gene order — a consensus backbone built from
+  // agreement across every genome's contig neighbourhoods, broken into
+  // fragments wherever that agreement runs out (an assembly contig ending,
+  // or a genuine rearrangement between genomes) — not a per-genome order.
+  // Absent from PIRATE/PanACoTA/generic-matrix input, so these come back
+  // -1 there and every group's fragment/order end up null (see
+  // parseDataLine below) — consumers (heatmap.js) treat that as "no
+  // genomic-order data available" rather than a parse failure.
+  const genomeFragmentIdx = header.findIndex((h) => /^genome fragment$/i.test(h.trim()));
+  const orderWithinFragmentIdx = header.findIndex((h) => /^order within fragment$/i.test(h.trim()));
+  return { delimiter, metaColCount, genomeNames, annotationIdx, genomeFragmentIdx, orderWithinFragmentIdx };
+}
+
+function extractFragmentOrder(row, headerInfo) {
+  const { genomeFragmentIdx, orderWithinFragmentIdx } = headerInfo;
+  const rawFragment = genomeFragmentIdx >= 0 ? row[genomeFragmentIdx] : undefined;
+  const rawOrder = orderWithinFragmentIdx >= 0 ? row[orderWithinFragmentIdx] : undefined;
+  const genomeFragment = rawFragment !== undefined && rawFragment !== "" ? rawFragment : null;
+  const orderWithinFragment = rawOrder !== undefined && rawOrder !== "" && !Number.isNaN(Number(rawOrder))
+    ? Number(rawOrder)
+    : null;
+  return { genomeFragment, orderWithinFragment };
 }
 
 function parseDataLine(line, headerInfo) {
@@ -77,7 +98,8 @@ function parseDataLine(line, headerInfo) {
   const groupId = row[0];
   const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
   const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
-  return { groupId, representativeId: groupId, annotation, rawRow };
+  const { genomeFragment, orderWithinFragment } = extractFragmentOrder(row, headerInfo);
+  return { groupId, representativeId: groupId, annotation, genomeFragment, orderWithinFragment, rawRow };
 }
 
 /** Same field extraction as parseDataLine, but keeps rawRow out of the returned object — a
@@ -89,7 +111,8 @@ function parseDataLineStreaming(line, headerInfo) {
   const groupId = row[0];
   const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
   const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
-  return { meta: { groupId, representativeId: groupId, annotation }, rawRow };
+  const { genomeFragment, orderWithinFragment } = extractFragmentOrder(row, headerInfo);
+  return { meta: { groupId, representativeId: groupId, annotation, genomeFragment, orderWithinFragment }, rawRow };
 }
 
 export function parseRoary(text) {

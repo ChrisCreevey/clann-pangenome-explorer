@@ -30,6 +30,27 @@ const EMPTY_RGB = [230, 226, 214]; // --stone-200-ish, "absent" cell
 const MIN_SCALE = 0.2, MAX_SCALE = 40;
 
 /**
+ * Sort key for Roary's own reconstructed gene order (genomeFragment +
+ * orderWithinFragment — see roary.js's parseHeaderLine for what these
+ * represent: a consensus backbone built from agreement across every
+ * genome's contig neighbourhoods, not a per-genome order). Groups without
+ * this data (any non-Roary/Panaroo format, or a Roary file predating these
+ * columns) sink to the end rather than interleaving arbitrarily with ones
+ * that do have it.
+ */
+export function compareGenomicOrder(a, b) {
+  const aHas = a.genomeFragment != null && a.orderWithinFragment != null;
+  const bHas = b.genomeFragment != null && b.orderWithinFragment != null;
+  if (aHas !== bHas) return aHas ? -1 : 1;
+  if (!aHas) return 0;
+  const fa = Number(a.genomeFragment), fb = Number(b.genomeFragment);
+  const fragmentCmp = (!Number.isNaN(fa) && !Number.isNaN(fb))
+    ? fa - fb
+    : String(a.genomeFragment).localeCompare(String(b.genomeFragment));
+  return fragmentCmp !== 0 ? fragmentCmp : a.orderWithinFragment - b.orderWithinFragment;
+}
+
+/**
  * Mount a heatmap into `container`. `data` is PangenomeData. `opts.groups`
  * (defaults to every group) is the row subset to rasterise — passing the
  * currently-filtered groups lets rows narrow to match the sidebar filters,
@@ -53,6 +74,15 @@ export function renderHeatmap(container, data, opts = {}) {
     return { setSort() {}, setSortCol() {}, setGroups() {} };
   }
 
+  // Only offered when the loaded format actually carries Roary/Panaroo's
+  // own fragment/order columns (see roary.js) — showing it for PIRATE/
+  // PanACoTA/generic-matrix data, which has no such thing, would just be a
+  // dead option that does nothing useful. Checked against the whole
+  // dataset (data.groups), not the current row subset (`groups`), so this
+  // is a stable property of the loaded format — it doesn't flicker on/off
+  // as sidebar filters happen to include/exclude the groups that carry it.
+  const hasGenomicOrder = data.groups.some((g) => g.genomeFragment != null && g.orderWithinFragment != null);
+
   const controls = document.createElement("div");
   controls.className = "chart-controls";
   controls.innerHTML = `
@@ -60,6 +90,7 @@ export function renderHeatmap(container, data, opts = {}) {
       <select id="hmSort">
         <option value="frequency">Frequency (core → cloud)</option>
         <option value="cluster">Similarity clustering</option>
+        ${hasGenomicOrder ? '<option value="genomic">Genomic order (fragments)</option>' : ""}
       </select>
     </label>
     <label>Sort columns by
@@ -90,6 +121,7 @@ export function renderHeatmap(container, data, opts = {}) {
   let rasterRows = 0; // offscreen.height after any binning below — the actual pixel-row count, not rowOrder.length
   let view = { k: 1, x: 0, y: 0 };
   let rowSortMode = "frequency";
+  let fragmentBoundaryRows = []; // output-row indices (see rasterise()) where a new genomeFragment begins — only populated in "genomic" sort mode
 
   function rowColor(group) {
     return FREQ_CLASS_RGB[group.freqClass] || EMPTY_RGB;
@@ -122,6 +154,8 @@ export function renderHeatmap(container, data, opts = {}) {
     const buf = imageData.data;
     const presentCounts = new Uint32Array(w); // reused per bin, not reallocated per row
     let maxBinRows = 1;
+    fragmentBoundaryRows = [];
+    let prevFragment; // undefined sentinel — no bin has a genomeFragment of undefined, so the first bin always registers as a "boundary" (harmlessly skipped below since outRow===0 never draws a line before row 0)
 
     // Partition totalRows into h bins by even fractional split (floor of a
     // running ratio), not totalRows/h rounded up into a fixed bin size —
@@ -137,7 +171,12 @@ export function renderHeatmap(container, data, opts = {}) {
       const end = Math.floor(((outRow + 1) * totalRows) / h);
       const binRows = end - start;
       if (binRows > maxBinRows) maxBinRows = binRows;
-      const [dr, dg, db] = rowColor(groups[rowOrder[start]]); // representative colour for the bin
+      const rowGroup = groups[rowOrder[start]];
+      const [dr, dg, db] = rowColor(rowGroup); // representative colour for the bin
+      if (rowSortMode === "genomic" && outRow > 0 && rowGroup.genomeFragment !== prevFragment) {
+        fragmentBoundaryRows.push(outRow);
+      }
+      prevFragment = rowGroup.genomeFragment;
       presentCounts.fill(0);
       for (let r = start; r < end; r++) {
         const vector = presenceVector(data, groups[rowOrder[r]].groupIndex);
@@ -158,9 +197,13 @@ export function renderHeatmap(container, data, opts = {}) {
 
     const downsampleNote = container.querySelector("#hmDownsampleNote");
     if (downsampleNote) {
-      downsampleNote.textContent = maxBinRows > 1
+      const aggregatedNote = maxBinRows > 1
         ? `Aggregated view: up to ${maxBinRows} groups per pixel row (${totalRows.toLocaleString()} groups total).`
         : "";
+      const fragmentNote = rowSortMode === "genomic"
+        ? `${fragmentBoundaryRows.length + 1} fragment(s) — lines mark where Roary's reconstructed order breaks (an assembly contig boundary, or a genuine rearrangement).`
+        : "";
+      downsampleNote.textContent = [aggregatedNote, fragmentNote].filter(Boolean).join(" ");
     }
   }
 
@@ -188,6 +231,20 @@ export function renderHeatmap(container, data, opts = {}) {
     ctx.save();
     ctx.setTransform(view.k, 0, 0, view.k, view.x, view.y);
     ctx.drawImage(offscreen, 0, 0);
+    // Fragment-boundary lines, drawn in the same transformed (image-pixel)
+    // coordinate space as the raster itself so they pan/zoom together with
+    // it automatically, rather than being baked into the raster image —
+    // only non-empty in "genomic" sort mode (see rasterise()).
+    if (fragmentBoundaryRows.length) {
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.lineWidth = 1 / view.k; // stays a crisp ~1 screen-pixel line regardless of zoom
+      for (const rowIndex of fragmentBoundaryRows) {
+        ctx.beginPath();
+        ctx.moveTo(0, rowIndex);
+        ctx.lineTo(genomeCount, rowIndex);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
@@ -211,6 +268,8 @@ export function renderHeatmap(container, data, opts = {}) {
       if (mode === "cluster") {
         const vectors = groups.map((g) => groupPresenceVector(data, g.groupIndex));
         rowOrder = clusterOrder(vectors, { metric: "jaccard" });
+      } else if (mode === "genomic") {
+        rowOrder = groups.map((g, i) => i).sort((a, b) => compareGenomicOrder(groups[a], groups[b]));
       } else {
         rowOrder = groups
           .map((g, i) => i)

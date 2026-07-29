@@ -41,6 +41,28 @@ test("parseRoaryFromLines throws a diagnostic error for a header-only stream", a
   );
 });
 
+test("parses Roary's Genome Fragment / Order within Fragment columns onto each group, null when absent", () => {
+  const data = parse(fixture("roary-small.csv"), { filename: "gene_presence_absence.csv" });
+  // roary-small.csv leaves these columns blank — every group should come back null, not "" or NaN.
+  for (const g of data.groups) {
+    assert.equal(g.genomeFragment, null);
+    assert.equal(g.orderWithinFragment, null);
+  }
+
+  const withOrder = [
+    "Gene,Non-unique Gene name,Annotation,No. isolates,No. sequences,Avg sequences per isolate,Genome fragment,Order within fragment,Accessory Fragment,Accessory Order with fragment,QC,Min group size nuc,Max group size nuc,Avg group size nuc,G1,G2",
+    "groupA,groupA,first,2,2,1.0,1,2,,,,,,,groupA_1,groupA_2",
+    "groupB,groupB,second,2,2,1.0,1,1,,,,,,,groupB_1,groupB_2",
+    "groupC,groupC,third,2,2,1.0,2,1,,,,,,,groupC_1,groupC_2",
+  ].join("\n");
+  const dataOrdered = parse(withOrder, { filename: "gene_presence_absence.csv" });
+  const byId = Object.fromEntries(dataOrdered.groups.map((g) => [g.groupId, g]));
+  assert.equal(byId.groupA.genomeFragment, "1");
+  assert.equal(byId.groupA.orderWithinFragment, 2);
+  assert.equal(byId.groupB.orderWithinFragment, 1);
+  assert.equal(byId.groupC.genomeFragment, "2");
+});
+
 test("detectFormat recognises Roary by header shape", () => {
   const text = fixture("roary-small.csv");
   assert.equal(detectFormat("gene_presence_absence.csv", text), "roary");

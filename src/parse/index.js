@@ -104,6 +104,11 @@ function assemblePangenomeData(genomeNames, groupsMeta, presenceMatrix, geneIdsB
       groupId: g.groupId,
       representativeId: g.representativeId ?? g.groupId,
       annotation: g.annotation ?? null,
+      // Roary's own reconstructed gene order (null for every other format,
+      // or a Roary/Panaroo file too old to carry these columns) — see
+      // roary.js's parseHeaderLine for what these actually represent.
+      genomeFragment: g.genomeFragment ?? null,
+      orderWithinFragment: g.orderWithinFragment ?? null,
       annotationColumns: {},
       tags: [],
       freqClass: null,
