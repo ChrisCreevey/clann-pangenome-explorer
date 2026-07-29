@@ -3,19 +3,61 @@
 // functions over PangenomeData; no DOM here.
 
 import { copyCountAt } from "../parse/matrix.js";
-import { annotationSearchText } from "../parse/annotation.js";
+
+// Columns that hold a plain number rather than text — known statically
+// (the fixed Groups-table columns) plus the dynamic "matched genes" count
+// column every Workflow B annotation source adds. Exported so the sidebar
+// UI can decide whether to show a text-contains box or a numeric
+// comparison for whichever column the user picks, without duplicating
+// this list.
+const STATIC_NUMERIC_COLUMNS = new Set(["genomesPresentIn", "sequencesTotal", "avgCopiesPerGenome"]);
+export function isNumericColumn(column) {
+  return STATIC_NUMERIC_COLUMNS.has(column) || column.startsWith("annMatched_");
+}
+
+/** A column's raw value for a group — `tags` (an array) joins to a comma-separated string; everything else is the group's own property. */
+function columnRawValue(group, column) {
+  return column === "tags" ? group.tags.join(", ") : group[column];
+}
+
+function matchesColumnFilter(group, columnFilter) {
+  if (!columnFilter || !columnFilter.column) return true;
+  const { column, mode, text, op, value } = columnFilter;
+  const raw = columnRawValue(group, column);
+  if (mode === "numeric") {
+    if (value == null || value === "") return true;
+    const num = Number(raw);
+    if (Number.isNaN(num)) return false;
+    switch (op) {
+      case ">": return num > value;
+      case ">=": return num >= value;
+      case "<": return num < value;
+      case "<=": return num <= value;
+      case "=": return num === value;
+      default: return true;
+    }
+  }
+  const needle = (text || "").trim().toLowerCase();
+  if (!needle) return true;
+  return String(raw ?? "").toLowerCase().includes(needle);
+}
 
 /**
  * Filter groups by frequency class, presence/sequence counts, average
- * copies per genome, and annotation text. Any criterion left undefined is
- * not applied. `criteria.freqClasses` is an array like ['core','shell'].
+ * copies per genome, and a single user-chosen column (`columnFilter`:
+ * { column, mode: 'text'|'numeric', text, op, value } — partial
+ * case-insensitive match in text mode, a comparison operator in numeric
+ * mode, restricted to whichever Groups-table column, including any
+ * uploaded-annotation column, the user picked in the sidebar). Any
+ * criterion left undefined is not applied. `criteria.freqClasses` is an
+ * array like ['core','shell'].
  */
 export function filterGroups(data, criteria = {}) {
   const {
     freqClasses, minGenomesPresentIn, maxGenomesPresentIn,
     minSequencesTotal, maxSequencesTotal,
     minAvgCopiesPerGenome, maxAvgCopiesPerGenome,
-    annotationText, tags, hasAnnotationValue, missingAnnotationValue,
+    columnFilter, tags, hasAnnotationValue, missingAnnotationValue,
   } = criteria;
 
   return data.groups.filter((g) => {
@@ -26,7 +68,7 @@ export function filterGroups(data, criteria = {}) {
     if (maxSequencesTotal != null && g.sequencesTotal > maxSequencesTotal) return false;
     if (minAvgCopiesPerGenome != null && g.avgCopiesPerGenome < minAvgCopiesPerGenome) return false;
     if (maxAvgCopiesPerGenome != null && g.avgCopiesPerGenome > maxAvgCopiesPerGenome) return false;
-    if (annotationText && !annotationSearchText(data, g).includes(annotationText.toLowerCase())) return false;
+    if (!matchesColumnFilter(g, columnFilter)) return false;
     if (tags && tags.length && !tags.some((t) => g.tags.includes(t))) return false;
     if (hasAnnotationValue && hasAnnotationValue.length
       && !hasAnnotationValue.some((key) => g.annotationColumns && g.annotationColumns[key] && g.annotationColumns[key].value)) return false;

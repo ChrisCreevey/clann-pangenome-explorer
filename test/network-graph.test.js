@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { estimateLayoutSeconds, degreeCap, degreeOf, connectedComponents, componentCenters } from "../src/render/network-graph.js";
+import { estimateLayoutSeconds, degreeCap, degreeOf, connectedComponents, componentCenters, circularLayout, gridLayout } from "../src/render/network-graph.js";
 
 test("estimateLayoutSeconds scales with n^2 (for UI hinting, not enforcement)", () => {
   const small = estimateLayoutSeconds(100);
@@ -110,4 +110,41 @@ test("componentCenters gives every component a distinct center, biggest componen
     assert.ok(c.x >= 0 && c.x <= 700);
     assert.ok(c.y >= 0 && c.y <= 400);
   });
+});
+
+test("circularLayout places every node on the circle, evenly spaced, all within bounds", () => {
+  const nodeIds = ["a", "b", "c", "d"];
+  const pos = circularLayout(nodeIds, 700, 400);
+  assert.equal(pos.size, 4);
+  const cx = 350, cy = 200;
+  for (const id of nodeIds) {
+    const p = pos.get(id);
+    const dist = Math.hypot(p.x - cx, p.y - cy);
+    assert.ok(Math.abs(dist - (Math.min(700, 400) / 2 - 30)) < 1e-6); // every node is exactly on the circle
+  }
+  // no two nodes land on the same point
+  const uniquePoints = new Set([...pos.values()].map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`));
+  assert.equal(uniquePoints.size, 4);
+});
+
+test("gridLayout groups nodes by category (adjacent grid indices for the same category)", () => {
+  const nodeIds = ["z", "a1", "a2", "m"];
+  const categoryOf = (id) => ({ z: "Zeta", a1: "Alpha", a2: "Alpha", m: "Mu" }[id]);
+  const pos = gridLayout(nodeIds, 400, 400, categoryOf);
+  assert.equal(pos.size, 4);
+  // sorted by category: Alpha, Alpha, Mu, Zeta -> a1 and a2 are adjacent cells
+  const cols = Math.ceil(Math.sqrt(4));
+  const idxOf = (id) => {
+    const p = pos.get(id);
+    const cellW = 400 / cols;
+    return Math.round(p.x / cellW - 0.5);
+  };
+  assert.equal(Math.abs(idxOf("a1") - idxOf("a2")) <= 1, true);
+});
+
+test("gridLayout is a no-op-safe on a single node", () => {
+  const pos = gridLayout(["only"], 400, 300, () => "cat");
+  assert.equal(pos.size, 1);
+  const p = pos.get("only");
+  assert.ok(p.x >= 0 && p.x <= 400 && p.y >= 0 && p.y <= 300);
 });

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
-import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../src/analysis/topfilter.js";
+import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates, isNumericColumn } from "../src/analysis/topfilter.js";
 import { applyWorkflowA } from "../src/parse/annotation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,10 +18,40 @@ test("filterGroups: freqClasses restricts to matching classes", () => {
   assert.deepEqual(core.map((g) => g.groupId).sort(), ["groupA", "groupD"]);
 });
 
-test("filterGroups: annotation text is a case-insensitive substring match", () => {
+test("filterGroups: columnFilter text mode is a case-insensitive substring match on the chosen column", () => {
   const data = loadRoary();
-  const hits = filterGroups(data, { annotationText: "LACTAMASE" });
+  const hits = filterGroups(data, { columnFilter: { column: "annotation", mode: "text", text: "LACTAMASE" } });
   assert.deepEqual(hits.map((g) => g.groupId), ["groupA"]);
+});
+
+test("filterGroups: columnFilter text mode works on any column, e.g. freqClass", () => {
+  const data = loadRoary();
+  const hits = filterGroups(data, { columnFilter: { column: "freqClass", mode: "text", text: "shell" } });
+  assert.deepEqual(hits.map((g) => g.groupId).sort(), ["groupB", "groupC"]);
+});
+
+test("filterGroups: columnFilter numeric mode compares with the chosen operator", () => {
+  const data = loadRoary();
+  const gt = filterGroups(data, { columnFilter: { column: "avgCopiesPerGenome", mode: "numeric", op: ">", value: 1.1 } });
+  assert.deepEqual(gt.map((g) => g.groupId), ["groupD"]);
+  const lte = filterGroups(data, { columnFilter: { column: "genomesPresentIn", mode: "numeric", op: "<=", value: 1 } });
+  assert.deepEqual(lte.map((g) => g.groupId), ["groupC"]);
+});
+
+test("filterGroups: columnFilter with no text/value set is a no-op", () => {
+  const data = loadRoary();
+  const hits = filterGroups(data, { columnFilter: { column: "annotation", mode: "text", text: "" } });
+  assert.equal(hits.length, data.meta.groupCount);
+});
+
+test("isNumericColumn recognises the fixed numeric columns and any dynamic matched-genes column", () => {
+  assert.equal(isNumericColumn("genomesPresentIn"), true);
+  assert.equal(isNumericColumn("sequencesTotal"), true);
+  assert.equal(isNumericColumn("avgCopiesPerGenome"), true);
+  assert.equal(isNumericColumn("annMatched_ann1_abc123"), true);
+  assert.equal(isNumericColumn("annotation"), false);
+  assert.equal(isNumericColumn("groupId"), false);
+  assert.equal(isNumericColumn("ann_ann1_abc123"), false);
 });
 
 test("filterGroups: count and avg-copies bounds combine (AND)", () => {

@@ -12,10 +12,10 @@
 // new listener (and a new Undo history) on top of the old one each time a
 // new file is loaded.
 
-import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../analysis/topfilter.js";
+import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates, isNumericColumn } from "../analysis/topfilter.js";
 import { listTags } from "../analysis/tags.js";
 import { renderSingletonBarChart, renderMultiCopyHistogram } from "./charts.js";
-import { renderGroupTable, DEFAULT_COLS } from "./group-table.js";
+import { renderGroupTable, DEFAULT_COLS, COL_LABELS } from "./group-table.js";
 import { openGroupDetail } from "./group-detail.js";
 import { downloadText } from "./download-util.js";
 import { geneIdListText, geneIdTableCsv, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../../export/group-export.js";
@@ -38,9 +38,39 @@ function card(titleText) {
   return c;
 }
 
+/**
+ * Column list + labels + which are numeric — shared between the Groups
+ * table and the sidebar's column-filter dropdown so both always offer
+ * exactly the same set, including one entry per uploaded annotation
+ * source (and its "matched genes" count column for Workflow B sources).
+ */
+function buildGroupColumns(data) {
+  const columns = [...DEFAULT_COLS];
+  const columnLabels = { ...COL_LABELS };
+  const numericColumns = ["genomesPresentIn", "sequencesTotal", "avgCopiesPerGenome"];
+  for (const source of data.meta.annotationSources || []) {
+    columns.push(`ann_${source.key}`);
+    columnLabels[`ann_${source.key}`] = source.header;
+    if (source.workflow === "B") {
+      columns.push(`annMatched_${source.key}`);
+      columnLabels[`annMatched_${source.key}`] = `${source.header} — matched genes`;
+      numericColumns.push(`annMatched_${source.key}`);
+    }
+  }
+  columns.push("tags");
+  return { columns, columnLabels, numericColumns };
+}
+
 function readSidebarCriteria() {
   const freqClasses = [...document.querySelectorAll(".fFreqClass:checked")].map((cb) => cb.value);
-  const annotationText = document.getElementById("fAnnotationText").value.trim() || undefined;
+  const column = document.getElementById("fColumn").value;
+  const columnFilter = isNumericColumn(column)
+    ? {
+      column, mode: "numeric",
+      op: document.getElementById("fColumnOp").value,
+      value: document.getElementById("fColumnValue").value ? Number(document.getElementById("fColumnValue").value) : undefined,
+    }
+    : { column, mode: "text", text: document.getElementById("fColumnText").value.trim() || undefined };
   const minGenomesPresentIn = document.getElementById("fMinGenomes").value
     ? Number(document.getElementById("fMinGenomes").value) : undefined;
   const maxGenomesPresentIn = document.getElementById("fMaxGenomes").value
@@ -50,14 +80,27 @@ function readSidebarCriteria() {
   const tags = [...document.querySelectorAll(".fTagCheckbox:checked")].map((cb) => cb.value);
   const hasAnnotationValue = [...document.querySelectorAll(".fAnnSourceCheckbox:checked")].map((cb) => cb.value);
   const missingAnnotationValue = [...document.querySelectorAll(".fAnnMissingCheckbox:checked")].map((cb) => cb.value);
-  return { freqClasses, annotationText, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags, hasAnnotationValue, missingAnnotationValue };
+  return { freqClasses, columnFilter, minGenomesPresentIn, maxGenomesPresentIn, minAvgCopiesPerGenome, tags, hasAnnotationValue, missingAnnotationValue };
+}
+
+/** Show the text-contains box for a text column, or the operator+value pair for a numeric one. */
+function updateColumnFilterMode() {
+  const numeric = isNumericColumn(document.getElementById("fColumn").value);
+  document.getElementById("fColumnTextRow").style.display = numeric ? "none" : "";
+  document.getElementById("fColumnText").style.display = numeric ? "none" : "";
+  document.getElementById("fColumnNumericRow").style.display = numeric ? "" : "none";
 }
 
 function writeSidebarCriteria(criteria) {
   document.querySelectorAll(".fFreqClass").forEach((cb) => {
     cb.checked = !criteria.freqClasses || !criteria.freqClasses.length || criteria.freqClasses.includes(cb.value);
   });
-  document.getElementById("fAnnotationText").value = criteria.annotationText || "";
+  const cf = criteria.columnFilter || {};
+  if (cf.column) document.getElementById("fColumn").value = cf.column;
+  document.getElementById("fColumnText").value = cf.text || "";
+  document.getElementById("fColumnOp").value = cf.op || ">";
+  document.getElementById("fColumnValue").value = cf.value ?? "";
+  updateColumnFilterMode();
   document.getElementById("fMinGenomes").value = criteria.minGenomesPresentIn ?? "";
   document.getElementById("fMaxGenomes").value = criteria.maxGenomesPresentIn ?? "";
   document.getElementById("fMinAvgCopies").value = criteria.minAvgCopiesPerGenome ?? "";
@@ -72,7 +115,17 @@ function writeSidebarCriteria(criteria) {
   });
 }
 
-const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], annotationText: undefined, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [], hasAnnotationValue: [], missingAnnotationValue: [] };
+const DEFAULT_CRITERIA = { freqClasses: ["core", "softcore", "shell", "cloud"], columnFilter: { column: "annotation", mode: "text", text: undefined }, minGenomesPresentIn: undefined, maxGenomesPresentIn: undefined, minAvgCopiesPerGenome: undefined, tags: [], hasAnnotationValue: [], missingAnnotationValue: [] };
+
+/** Rebuild the column-filter dropdown from the Groups table's current column set, preserving the selected column if it still exists. */
+function populateColumnFilterOptions(data) {
+  const select = document.getElementById("fColumn");
+  const previous = select.value;
+  const { columns, columnLabels } = buildGroupColumns(data);
+  select.innerHTML = columns.map((col) => `<option value="${col}">${columnLabels[col] || col}</option>`).join("");
+  select.value = columns.includes(previous) ? previous : "annotation";
+  updateColumnFilterMode();
+}
 
 /** Rebuild the tag checkboxes in the sidebar from the tags currently in use, preserving any that are still checked. */
 function populateTagCheckboxes(data) {
@@ -143,7 +196,10 @@ function bindSidebarOnce() {
   // those specifically; checkbox clicks are already discrete and stay instant.
   const onChangeDebounced = debounce(onChange, 200);
   document.querySelectorAll(".fFreqClass").forEach((cb) => cb.addEventListener("change", onChange));
-  document.getElementById("fAnnotationText").addEventListener("input", onChangeDebounced);
+  document.getElementById("fColumn").addEventListener("change", () => { updateColumnFilterMode(); onChange(); });
+  document.getElementById("fColumnText").addEventListener("input", onChangeDebounced);
+  document.getElementById("fColumnOp").addEventListener("change", onChange);
+  document.getElementById("fColumnValue").addEventListener("input", onChangeDebounced);
   document.getElementById("fMinGenomes").addEventListener("input", onChangeDebounced);
   document.getElementById("fMaxGenomes").addEventListener("input", onChangeDebounced);
   document.getElementById("fMinAvgCopies").addEventListener("input", onChangeDebounced);
@@ -277,6 +333,7 @@ export function mountGroupsCard(panel, data, opts = {}) {
   bindSidebarOnce();
   populateTagCheckboxes(data);
   populateAnnotationSourceCheckboxes(data);
+  populateColumnFilterOptions(data);
 
   const filteredCard = card("Groups");
   filteredCard.id = "filteredGroupsCard";
@@ -296,19 +353,7 @@ export function mountGroupsCard(panel, data, opts = {}) {
   filteredCard.appendChild(tableDiv);
   panel.appendChild(filteredCard);
 
-  const columns = [...DEFAULT_COLS];
-  const columnLabels = {};
-  const numericColumns = [];
-  for (const source of data.meta.annotationSources || []) {
-    columns.push(`ann_${source.key}`);
-    columnLabels[`ann_${source.key}`] = source.header;
-    if (source.workflow === "B") {
-      columns.push(`annMatched_${source.key}`);
-      columnLabels[`annMatched_${source.key}`] = `${source.header} — matched genes`;
-      numericColumns.push(`annMatched_${source.key}`);
-    }
-  }
-  columns.push("tags");
+  const { columns, columnLabels, numericColumns } = buildGroupColumns(data);
 
   const groupTableHandle = renderGroupTable(tableDiv, filterGroups(data, DEFAULT_CRITERIA), { columns, columnLabels, numericColumns, onRowClick: (group) => openGroupDetail(data, group) });
 

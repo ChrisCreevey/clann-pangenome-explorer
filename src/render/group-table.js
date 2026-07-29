@@ -4,7 +4,7 @@
 
 const NUMERIC = new Set(["genomesPresentIn", "sequencesTotal", "avgCopiesPerGenome", "consistencyScore"]);
 export const DEFAULT_COLS = ["groupId", "annotation", "freqClass", "genomesPresentIn", "sequencesTotal", "avgCopiesPerGenome"];
-const COL_LABELS = {
+export const COL_LABELS = {
   groupId: "Group", annotation: "Annotation", freqClass: "Class",
   genomesPresentIn: "Genomes", sequencesTotal: "Sequences", avgCopiesPerGenome: "Avg copies",
   consistencyScore: "Consistency", tags: "Tags",

@@ -137,6 +137,41 @@ export function componentCenters(compCount, compOf, width, height) {
   return centers;
 }
 
+/**
+ * Evenly spaced points around a circle — an O(n) alternative to the
+ * force-directed layout, for when its O(n^2) cost isn't worth paying (a
+ * very large graph) or its clustering just isn't the arrangement wanted.
+ * Doesn't look at edges at all, so it's always instant regardless of
+ * node/edge count (short of the hard DOM-element circuit breaker).
+ */
+export function circularLayout(nodeIds, width, height) {
+  const cx = width / 2, cy = height / 2, r = Math.min(width, height) / 2 - 30;
+  const pos = new Map();
+  nodeIds.forEach((id, i) => {
+    const angle = (i / Math.max(1, nodeIds.length)) * 2 * Math.PI;
+    pos.set(id, { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+  });
+  return pos;
+}
+
+/**
+ * A grid, nodes sorted by category first so same-category nodes end up
+ * adjacent — a second O(n) alternative, grouping by the same category
+ * that already drives node colour rather than by connectivity.
+ */
+export function gridLayout(nodeIds, width, height, categoryOf) {
+  const sorted = [...nodeIds].sort((a, b) => categoryOf(a).localeCompare(categoryOf(b)));
+  const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
+  const rows = Math.max(1, Math.ceil(sorted.length / cols));
+  const cellW = width / cols, cellH = height / rows;
+  const pos = new Map();
+  sorted.forEach((id, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    pos.set(id, { x: cellW * (col + 0.5), y: cellH * (row + 0.5) });
+  });
+  return pos;
+}
+
 // Disassociated edges push apart on top of the generic pairwise repulsion
 // every node pair already gets — this factor is how much *extra* push a
 // specifically-disassociated pair gets beyond that baseline, so they read
@@ -264,6 +299,13 @@ export function renderNetworkGraph(container, data, opts = {}) {
         <option value="disassociated">Disassociated only</option>
       </select>
     </label>
+    <label>Layout
+      <select id="ngLayoutMode">
+        <option value="force">Force-directed (clusters by connectivity)</option>
+        <option value="circular">Circular</option>
+        <option value="grid">Grid (by category)</option>
+      </select>
+    </label>
     <label>Max significance <input type="text" id="ngMaxSig" placeholder="no cap" style="width:70px"></label>
     <label><input type="checkbox" id="ngCrossOnly"> Cross-category only</label>
     <label><input type="checkbox" id="ngHighlightTop"> Highlight top 20 by significance</label>
@@ -276,7 +318,7 @@ export function renderNetworkGraph(container, data, opts = {}) {
   container.appendChild(controls);
   const layoutHint = document.createElement("div");
   layoutHint.className = "hint";
-  layoutHint.textContent = "Layout: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Node size reflects degree (a cheap centrality proxy) within the drawn selection.";
+  layoutHint.textContent = "Force-directed: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Circular/Grid are instant alternatives that ignore connectivity (Grid groups by category). Node size reflects degree (a cheap centrality proxy) and shrinks automatically as the drawn selection gets larger. Drag a node to reposition it (lost on the next redraw); scroll/pinch to zoom, drag the background to pan.";
   container.appendChild(layoutHint);
   const note = document.createElement("div");
   note.className = "hint";
@@ -381,7 +423,13 @@ export function renderNetworkGraph(container, data, opts = {}) {
       lastCappedNote = cappedNote;
       const tooManyNodes = nodeIds.length > ABSOLUTE_MAX_NODES;
       const tooManyEdges = edges.length > ABSOLUTE_MAX_EDGES;
-      const estSeconds = estimateLayoutSeconds(nodeIds.length);
+      // Circular/Grid are O(n) and never touch the O(n^2) force simulation,
+      // so they're always cheap regardless of node count — only the
+      // force-directed layout needs the slow-draw estimate/gate below.
+      // The DOM-element circuit breaker above still applies to every mode,
+      // since that's an SVG element-count budget, not a compute-time one.
+      const layoutMode = container.querySelector("#ngLayoutMode").value;
+      const estSeconds = layoutMode === "force" ? estimateLayoutSeconds(nodeIds.length) : 0;
 
       drawn = false;
 
@@ -394,7 +442,7 @@ export function renderNetworkGraph(container, data, opts = {}) {
       }
 
       if (estSeconds > SLOW_WARNING_SECONDS) {
-        note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups${cappedNote} — laying this out will take roughly ${Math.ceil(estSeconds)}s and freeze the page until it finishes. Click "Draw network" to continue.`;
+        note.textContent = `${pairs.length} pairs across ${nodeIds.length} groups${cappedNote} — laying this out will take roughly ${Math.ceil(estSeconds)}s and freeze the page until it finishes. Click "Draw network" to continue, or switch Layout to Circular/Grid for an instant (if less informative) alternative.`;
         drawBtn.disabled = false;
         scene.innerHTML = "";
         pendingSelection = { pairs, nodeIds, edges };
@@ -418,9 +466,18 @@ export function renderNetworkGraph(container, data, opts = {}) {
     scene.innerHTML = "";
     if (!nodeIds.length) return;
 
-    const pos = layoutNodes(nodeIds, edges, { width, height });
+    const layoutMode = container.querySelector("#ngLayoutMode").value;
+    const pos = layoutMode === "circular" ? circularLayout(nodeIds, width, height)
+      : layoutMode === "grid" ? gridLayout(nodeIds, width, height, (id) => categoryFor(groupById.get(id)))
+      : layoutNodes(nodeIds, edges, { width, height });
     const degree = degreeOf(nodeIds, edges); // centrality proxy (see layoutNodes' doc comment) — also drives node radius below
 
+    // Shrinks nodes as the drawn selection grows, so a few hundred nodes
+    // don't overlap into an unreadable smear — pure node-count-based, so
+    // it applies the same regardless of which layout mode is active.
+    const crowdScale = Math.min(1, 22 / Math.sqrt(Math.max(1, nodeIds.length)));
+
+    const edgeLinesByNode = new Map(nodeIds.map((id) => [id, []])); // for live-updating edges while a node is dragged
     for (const e of edges) {
       const a = pos.get(e.a), b = pos.get(e.b);
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -435,25 +492,59 @@ export function renderNetworkGraph(container, data, opts = {}) {
       title.textContent = `${e.pair.groupIdA} — ${e.pair.groupIdB} (${e.pair.direction}${e.pair.significance != null ? `, significance ${e.pair.significance}` : ""})`;
       line.appendChild(title);
       scene.appendChild(line);
+      edgeLinesByNode.get(e.a).push({ line, end: "x1y1" });
+      edgeLinesByNode.get(e.b).push({ line, end: "x2y2" });
     }
 
     for (const id of nodeIds) {
       const group = groupById.get(id);
       const p = pos.get(id);
       const color = useCategories ? categoryColor(allCategories, categoryFor(group)) : (FREQ_CLASS_COLOR[group.freqClass] || "#999");
-      const radius = 4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5); // degree (centrality proxy) -> radius, capped so a hub doesn't dominate the canvas
+      const radius = Math.max(2, (4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5)) * crowdScale); // degree (centrality proxy) -> radius, shrunk by crowding, floored so it never vanishes
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", radius);
       circle.setAttribute("fill", color);
       circle.setAttribute("stroke", "#fff"); circle.setAttribute("stroke-width", "1");
+      circle.style.cursor = "grab";
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
       title.textContent = `${group.groupId}${group.annotation ? ` — ${group.annotation}` : ""} (${useCategories ? categoryFor(group) : group.freqClass}, degree ${degree.get(id) || 0})`;
       circle.appendChild(title);
       scene.appendChild(circle);
+
+      // Manual repositioning: plain pointer drag, no re-simulation — a
+      // dragged node just stays where it's put until the next redraw
+      // (filter change, "Draw network" click, or a layout-mode switch).
+      // stopPropagation() keeps this from also triggering the
+      // background pan/zoom's own pointerdown handler.
+      circle.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        try { circle.setPointerCapture(e.pointerId); } catch { /* e.g. a non-pointer-backed synthetic event — drag still works without capture, just won't track past the element's own bounds */ }
+        circle.style.cursor = "grabbing";
+        const start = { x: e.clientX, y: e.clientY };
+        const origin = { x: p.x, y: p.y };
+        function onMove(ev) {
+          p.x = origin.x + (ev.clientX - start.x) / view.k;
+          p.y = origin.y + (ev.clientY - start.y) / view.k;
+          circle.setAttribute("cx", p.x);
+          circle.setAttribute("cy", p.y);
+          for (const { line, end } of edgeLinesByNode.get(id)) {
+            if (end === "x1y1") { line.setAttribute("x1", p.x); line.setAttribute("y1", p.y); }
+            else { line.setAttribute("x2", p.x); line.setAttribute("y2", p.y); }
+          }
+        }
+        function onUp(ev) {
+          try { circle.releasePointerCapture(ev.pointerId); } catch { /* see the matching try/catch on setPointerCapture above */ }
+          circle.style.cursor = "grab";
+          circle.removeEventListener("pointermove", onMove);
+          circle.removeEventListener("pointerup", onUp);
+        }
+        circle.addEventListener("pointermove", onMove);
+        circle.addEventListener("pointerup", onUp);
+      });
     }
   }
 
-  container.querySelectorAll("#ngDirection, #ngMaxSig, #ngCrossOnly, #ngTopN").forEach((el) => {
+  container.querySelectorAll("#ngDirection, #ngLayoutMode, #ngMaxSig, #ngCrossOnly, #ngTopN").forEach((el) => {
     el.addEventListener("input", () => refreshNote());
     el.addEventListener("change", () => refreshNote());
   });

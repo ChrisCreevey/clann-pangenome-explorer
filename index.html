@@ -110,8 +110,20 @@
         <div class="row">
           <label><input type="checkbox" class="fFreqClass" value="cloud" checked> Cloud</label>
         </div>
-        <div class="row"><label for="fAnnotationText">Annotation contains</label></div>
-        <input type="text" id="fAnnotationText" placeholder="e.g. beta-lactamase">
+        <div class="row"><label for="fColumn">Column</label></div>
+        <select id="fColumn"></select>
+        <div class="row" id="fColumnTextRow"><label for="fColumnText">Contains</label></div>
+        <input type="text" id="fColumnText" placeholder="e.g. beta-lactamase">
+        <div class="row" id="fColumnNumericRow" style="display:none">
+          <select id="fColumnOp" style="width:auto">
+            <option value=">">&gt;</option>
+            <option value=">=">&ge;</option>
+            <option value="<">&lt;</option>
+            <option value="<=">&le;</option>
+            <option value="=">=</option>
+          </select>
+          <input type="number" id="fColumnValue" step="any" placeholder="value" style="flex:1">
+        </div>
         <div class="row"><label for="fMinGenomes">Min genomes present in</label></div>
         <input type="number" id="fMinGenomes" min="0" step="1" value="0">
         <div class="row"><label for="fMaxGenomes">Max genomes present in</label></div>
