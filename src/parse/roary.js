@@ -3,6 +3,7 @@
 // (near-identical column set, minor naming differences).
 
 import { splitDelimited, detectDelimiter } from "./shared.js";
+import { StreamingMatrixBuilder } from "./matrix.js";
 
 // Fixed metadata columns preceding the per-genome columns. Panaroo's naming
 // differs slightly ("Non-unique Gene name" vs "Non-unique gene name" etc.)
@@ -79,6 +80,18 @@ function parseDataLine(line, headerInfo) {
   return { groupId, representativeId: groupId, annotation, rawRow };
 }
 
+/** Same field extraction as parseDataLine, but keeps rawRow out of the returned object — a
+ * streaming caller hands rawRow straight to a StreamingMatrixBuilder and discards it per-row,
+ * rather than collecting it into an array kept alive for the whole file. */
+function parseDataLineStreaming(line, headerInfo) {
+  const { delimiter, metaColCount, genomeNames, annotationIdx } = headerInfo;
+  const row = splitDelimited(line, delimiter);
+  const groupId = row[0];
+  const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
+  const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
+  return { meta: { groupId, representativeId: groupId, annotation }, rawRow };
+}
+
 export function parseRoary(text) {
   // Split on \n, \r\n, or a bare \r (classic-Mac-style line endings, which
   // some export tools still produce) — a plain /\r?\n/ never matches a lone
@@ -98,14 +111,25 @@ export function parseRoary(text) {
 
 /**
  * Same result as parseRoary, but consumes an async iterable of lines (see
- * stream-lines.js) instead of one big string — the only way to load a
- * multi-gigabyte matrix without materialising the whole file as a JS string
- * first, which is what was silently failing (file.text() resolving to an
- * empty string under memory pressure, with no error thrown at all).
+ * stream-lines.js) instead of one big string, AND writes each row straight
+ * into a StreamingMatrixBuilder as it arrives rather than collecting every
+ * row's raw per-genome cell text into one big array first. That collection
+ * step is what made the first version of this function still crash on a
+ * huge file despite streaming the read: holding every row's rawRow strings
+ * alive simultaneously is exactly the groupCount x genomeCount blowup the
+ * Uint16Array matrix exists to avoid (see matrix.js), just deferred to
+ * happen after the read instead of during it. Peak memory here is the
+ * final matrix itself plus one row's transient strings, not the whole
+ * matrix's worth of small strings held at once.
+ *
+ * Returns { genomeNames, groupsMeta, presenceMatrix, geneIdsByGroup } —
+ * groupsMeta holds only { groupId, representativeId, annotation } per row
+ * (no rawRow), consumed by assemblePangenomeData in index.js.
  */
 export async function parseRoaryStream(lineIterator) {
   let headerInfo = null;
-  const groups = [];
+  let builder = null;
+  const groupsMeta = [];
   let sawAnyLine = false;
 
   for await (const line of lineIterator) {
@@ -113,17 +137,21 @@ export async function parseRoaryStream(lineIterator) {
     sawAnyLine = true;
     if (!headerInfo) {
       headerInfo = parseHeaderLine(line);
+      builder = new StreamingMatrixBuilder(headerInfo.genomeNames.length);
       continue;
     }
-    groups.push(parseDataLine(line, headerInfo));
+    const { meta, rawRow } = parseDataLineStreaming(line, headerInfo);
+    builder.addRow(rawRow);
+    groupsMeta.push(meta);
   }
 
-  if (!headerInfo || groups.length === 0) {
+  if (!headerInfo || groupsMeta.length === 0) {
     const detail = sawAnyLine
       ? "Only a header line was found — no data rows followed it."
       : "No content at all was read from the file — the browser may have run out of memory while streaming it (check DevTools' console/memory tab), or the upload itself is empty.";
     throw new Error(`Roary file has no data rows. ${detail}`);
   }
 
-  return { genomeNames: headerInfo.genomeNames, groups };
+  const { presenceMatrix, geneIdsByGroup } = builder.finish();
+  return { genomeNames: headerInfo.genomeNames, groupsMeta, presenceMatrix, geneIdsByGroup };
 }

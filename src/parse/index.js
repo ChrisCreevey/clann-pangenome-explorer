@@ -59,23 +59,39 @@ export function parse(text, opts = {}) {
  * instead of a fully-materialised text string — for files too large to
  * safely hold as one JS string. Format must already be known to be 'roary'
  * (callers detect this cheaply via peekFirstLine before choosing this path).
+ * parseRoaryStream already builds presenceMatrix/geneIdsByGroup directly
+ * (see matrix.js's StreamingMatrixBuilder), so this skips buildMatrix and
+ * goes straight to assembling the rest of PangenomeData around them.
  */
 export async function parseRoaryFromLines(lineIterator, opts = {}) {
   const raw = await parseRoaryStream(lineIterator);
-  return buildPangenomeData(raw, { sourceFilename: opts.filename, format: "roary" });
+  return assemblePangenomeData(raw.genomeNames, raw.groupsMeta, raw.presenceMatrix, raw.geneIdsByGroup, {
+    sourceFilename: opts.filename,
+    format: "roary",
+  });
 }
 
 /** Turn a raw { genomeNames, groups } shape into full PangenomeData with derived stats. */
 export function buildPangenomeData(raw, meta = {}) {
-  const genomeNames = raw.genomeNames;
-  const genomeCount = genomeNames.length;
-  const groupCount = raw.groups.length;
-
+  const genomeCount = raw.genomeNames.length;
   const { presenceMatrix, geneIdsByGroup } = buildMatrix(raw.groups, genomeCount);
+  return assemblePangenomeData(raw.genomeNames, raw.groups, presenceMatrix, geneIdsByGroup, meta);
+}
+
+/**
+ * Shared tail end of both parse paths above: given genome names, one
+ * { groupId, representativeId, annotation } record per group (rawRow, if
+ * present, is ignored here — it was already consumed to build the matrix),
+ * and the finished presence matrix/gene-ID store, derive every per-group
+ * and per-genome stat PangenomeData needs.
+ */
+function assemblePangenomeData(genomeNames, groupsMeta, presenceMatrix, geneIdsByGroup, meta = {}) {
+  const genomeCount = genomeNames.length;
+  const groupCount = groupsMeta.length;
 
   const genomeTotals = genomeNames.map(() => ({ totalGenes: 0, uniqueGenes: 0, coreGenesPresent: 0 }));
 
-  const groups = raw.groups.map((g, groupIndex) => {
+  const groups = groupsMeta.map((g, groupIndex) => {
     const base = groupIndex * genomeCount;
     let genomesPresentIn = 0;
     let sequencesTotal = 0;

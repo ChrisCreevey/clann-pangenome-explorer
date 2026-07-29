@@ -44,6 +44,55 @@ export function buildMatrix(rawGroups, genomeCount) {
   return { presenceMatrix, geneIdsByGroup };
 }
 
+/**
+ * Incrementally builds the same { presenceMatrix, geneIdsByGroup } shape as
+ * buildMatrix, one row at a time, for streaming callers that don't have the
+ * full row count up front. Critically, each row's raw cell-text array is
+ * only ever needed transiently in addRow() — unlike buildMatrix (which is
+ * handed every row's raw strings already collected into one array), nothing
+ * here holds more than one row's worth of raw text at a time. The matrix
+ * grows by doubling (like a typical dynamic array), so total copying stays
+ * amortised O(final size) rather than O(final size) per row.
+ */
+export class StreamingMatrixBuilder {
+  constructor(genomeCount, initialCapacity = 4096) {
+    this.genomeCount = genomeCount;
+    this.capacity = Math.max(1, initialCapacity);
+    this.presenceMatrix = new Uint16Array(genomeCount * this.capacity);
+    this.geneIdsByGroup = [];
+    this.groupCount = 0;
+  }
+
+  addRow(rawRow) {
+    if (this.groupCount >= this.capacity) this._grow();
+    const base = this.groupCount * this.genomeCount;
+    for (let genomeIndex = 0; genomeIndex < this.genomeCount; genomeIndex++) {
+      const { copyCount, geneIds } = parsePresenceCell(rawRow[genomeIndex]);
+      this.presenceMatrix[base + genomeIndex] = copyCount;
+      if (geneIds.length) {
+        if (!this.geneIdsByGroup[this.groupCount]) this.geneIdsByGroup[this.groupCount] = new Map();
+        this.geneIdsByGroup[this.groupCount].set(genomeIndex, geneIds);
+      }
+    }
+    this.groupCount++;
+  }
+
+  _grow() {
+    this.capacity *= 2;
+    const grown = new Uint16Array(this.genomeCount * this.capacity);
+    grown.set(this.presenceMatrix);
+    this.presenceMatrix = grown;
+  }
+
+  /** Trim the matrix to the actual row count written. Call once, after the last addRow(). */
+  finish() {
+    return {
+      presenceMatrix: this.presenceMatrix.subarray(0, this.groupCount * this.genomeCount),
+      geneIdsByGroup: this.geneIdsByGroup,
+    };
+  }
+}
+
 export function copyCountAt(data, groupIndex, genomeIndex) {
   return data.presenceMatrix[groupIndex * data.meta.genomeCount + genomeIndex];
 }
