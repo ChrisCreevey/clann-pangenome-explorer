@@ -343,8 +343,9 @@ export function renderNetworkGraph(container, data, opts = {}) {
   const useCategories = allCategories.length > 0;
   const groupById = new Map(data.groups.map((g) => [g.groupId, g])); // built once, not per node — avoids an O(nodes*groups) Array.find per draw
 
-  // Legend: nothing else on the page explained what a node's colour or size
-  // means, so a swatch/label per colour plus a plain-text note for size.
+  // Legend: nothing else on the page explained what a node's colour/size or
+  // an edge's colour/style means, so a swatch/label per colour plus a
+  // plain-text note for size, on separate lines for nodes vs. edges.
   const legend = document.createElement("div");
   legend.className = "chart-legend";
   if (useCategories) {
@@ -359,6 +360,14 @@ export function renderNetworkGraph(container, data, opts = {}) {
       .join(" &nbsp; ") + " &nbsp; · &nbsp; node size = degree (more connections → bigger)";
   }
   container.appendChild(legend);
+
+  const edgeLegend = document.createElement("div");
+  edgeLegend.className = "chart-legend";
+  edgeLegend.innerHTML =
+    `<span class="sw" style="background:${ASSOC_COLOR}"></span>Associated (solid) &nbsp; ` +
+    `<span class="sw" style="background:${DISASSOC_COLOR}"></span>Disassociated (dashed) &nbsp; ` +
+    `· &nbsp; thicker/more opaque = one of the top 20 by significance, if "Highlight top 20" is checked`;
+  container.appendChild(edgeLegend);
 
   /**
    * Cheap: apply the direction/significance/cross-category filters, no
@@ -398,14 +407,25 @@ export function renderNetworkGraph(container, data, opts = {}) {
   let lastCappedNote = ""; // " — showing the top N most-connected of M groups...", reused by runLayout's own note text
   let pendingSelection = null; // the (capped) selection that would be drawn next
   let drawn = false; // whether pendingSelection has actually been laid out yet — guards the "Highlight" checkbox from bypassing the slow-draw gate
-  let drawnCircles = []; // {circle, baseRadius}, and drawnLines: {line, baseWidth} — reassigned by runLayout each redraw, read by applyVisualScale()
+  let drawnCircles = []; // {circle, baseRadius, baseBorderWidth}, and drawnLines: {line, baseWidth} — reassigned by runLayout each redraw, read by applyVisualScale()
   let drawnLines = [];
 
-  /** Manual node-size/edge-width multipliers, applied in place (no redraw, no recompute) — just scales what's already drawn from its stored base value. */
+  /**
+   * Manual node-size/edge-width multipliers, applied in place (no redraw,
+   * no recompute) — just scales what's already drawn from its stored base
+   * value. The white node border scales together with the radius (both by
+   * nodeScale) rather than staying a fixed "1" — otherwise shrinking nodes
+   * down leaves the border a fixed width while the fill shrinks under it,
+   * so small nodes end up looking like a white blob with barely any of
+   * their actual colour showing.
+   */
   function applyVisualScale() {
     const nodeScale = Number(container.querySelector("#ngNodeScale").value) || 1;
     const edgeScale = Number(container.querySelector("#ngEdgeScale").value) || 1;
-    drawnCircles.forEach(({ circle, baseRadius }) => circle.setAttribute("r", baseRadius * nodeScale));
+    drawnCircles.forEach(({ circle, baseRadius, baseBorderWidth }) => {
+      circle.setAttribute("r", baseRadius * nodeScale);
+      circle.setAttribute("stroke-width", baseBorderWidth * nodeScale);
+    });
     drawnLines.forEach(({ line, baseWidth }) => line.setAttribute("stroke-width", baseWidth * edgeScale));
   }
 
@@ -518,12 +538,13 @@ export function renderNetworkGraph(container, data, opts = {}) {
       const p = pos.get(id);
       const color = useCategories ? categoryColor(allCategories, categoryFor(group)) : (FREQ_CLASS_COLOR[group.freqClass] || "#999");
       const baseRadius = Math.max(2, (4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5)) * crowdScale); // degree (centrality proxy) -> radius, shrunk by crowding, floored so it never vanishes
+      const baseBorderWidth = Math.max(0.4, baseRadius * 0.15); // proportional to radius, not a fixed "1" — otherwise a shrunk node is mostly white border
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", baseRadius);
       circle.setAttribute("fill", color);
-      circle.setAttribute("stroke", "#fff"); circle.setAttribute("stroke-width", "1");
+      circle.setAttribute("stroke", "#fff"); circle.setAttribute("stroke-width", baseBorderWidth);
       circle.style.cursor = "grab";
-      drawnCircles.push({ circle, baseRadius });
+      drawnCircles.push({ circle, baseRadius, baseBorderWidth });
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
       title.textContent = `${group.groupId}${group.annotation ? ` — ${group.annotation}` : ""} (${useCategories ? categoryFor(group) : group.freqClass}, degree ${degree.get(id) || 0})`;
       circle.appendChild(title);

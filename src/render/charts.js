@@ -23,13 +23,28 @@ function emptyNote(container, text) {
  * `svg`, identical interaction model to the heatmap and network graph —
  * factored out here so any chart that gets too dense to read at its
  * default size (many genomes, many bars) can opt in without
- * reimplementing it. Only `scene`'s contents zoom; anything appended to
- * `svg` directly (axes, labels) stays fixed, matching how the network
- * graph keeps its own axis-equivalent chrome outside the pan/zoom scene.
+ * reimplementing it. Only `scene`'s contents move; anything appended to
+ * `svg` directly (axes, labels) stays fixed pixel-for-pixel.
+ *
+ * `axis: "x"` (vs. the default "both") restricts zoom/pan to horizontal
+ * only — for a bar chart, that's what keeps a fixed axis actually usable:
+ * with 2D zoom, bars drift vertically away from a fixed baseline/axis
+ * line the moment you zoom or pan (the axis was never wrong, it just
+ * silently stopped matching the now-transformed bars — confusing, not a
+ * rendering bug). Locking the y component to identity means the bars'
+ * baseline never moves, so a fixed axis line stays correctly aligned
+ * with them at every zoom level, while horizontal zoom still does the
+ * one thing this exists for: spreading out bars that are too thin to
+ * read at the default width.
  */
-function attachPanZoom(svg, scene, { width, height, minScale = 0.5, maxScale = 20 } = {}) {
+function attachPanZoom(svg, scene, { width, height, minScale = 0.5, maxScale = 20, axis = "both" } = {}) {
   const view = { k: 1, x: 0, y: 0 };
-  function applyView() { scene.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`); }
+  const lockY = axis === "x";
+  function applyView() {
+    scene.setAttribute("transform", lockY
+      ? `translate(${view.x},0) scale(${view.k},1)`
+      : `translate(${view.x},${view.y}) scale(${view.k})`);
+  }
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
@@ -38,13 +53,18 @@ function attachPanZoom(svg, scene, { width, height, minScale = 0.5, maxScale = 2
     const factor = Math.exp(-e.deltaY * 0.0015);
     const nk = Math.min(maxScale, Math.max(minScale, view.k * factor));
     view.x = mx - (mx - view.x) * (nk / view.k);
-    view.y = my - (my - view.y) * (nk / view.k);
+    if (!lockY) view.y = my - (my - view.y) * (nk / view.k);
     view.k = nk;
     applyView();
   }, { passive: false });
   let drag = null;
   svg.addEventListener("pointerdown", (e) => { drag = { x: e.clientX - view.x, y: e.clientY - view.y }; svg.setPointerCapture(e.pointerId); });
-  svg.addEventListener("pointermove", (e) => { if (!drag) return; view.x = e.clientX - drag.x; view.y = e.clientY - drag.y; applyView(); });
+  svg.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    view.x = e.clientX - drag.x;
+    if (!lockY) view.y = e.clientY - drag.y;
+    applyView();
+  });
   svg.addEventListener("pointerup", () => { drag = null; });
   svg.addEventListener("dblclick", () => { view.k = 1; view.x = 0; view.y = 0; applyView(); });
   return { reset: () => { view.k = 1; view.x = 0; view.y = 0; applyView(); } };
@@ -313,12 +333,12 @@ export function renderSingletonBarChart(container, byGenome) {
   svg.appendChild(yMaxLabel);
 
   const xLabel = el("text", { x: width / 2, y: height - 8, "text-anchor": "middle" });
-  xLabel.textContent = "Genomes, sorted by singleton count (hover a bar for its name) — scroll/pinch to zoom, drag to pan, double-click to reset →";
+  xLabel.textContent = "Genomes, sorted by singleton count (hover a bar for its name) — scroll/pinch to zoom horizontally, drag to pan, double-click to reset →";
   svg.appendChild(xLabel);
 
   container.innerHTML = "";
   container.appendChild(svg);
-  attachPanZoom(svg, scene, { width, height });
+  attachPanZoom(svg, scene, { width, height, axis: "x" }); // horizontal-only — keeps the axis line/labels correctly aligned with the bars at every zoom level
 }
 
 /**
