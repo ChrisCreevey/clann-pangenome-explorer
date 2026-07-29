@@ -40,18 +40,17 @@ test("categoryFor falls back to 'uncategorised' for an untagged group", () => {
   assert.equal(categoryFor(groupA), "AMR");
 });
 
-test("categoryMatrix counts associated/disassociated pairs per unordered category combo", () => {
+test("categoryMatrix counts associated/disassociated pairs per unordered category combo, excluding uncategorised x uncategorised", () => {
   const data = loadWithPairs();
   keywordTag(data, "AMR", ["beta-lactamase"]); // tags groupA only
-  const matrix = categoryMatrix(data);
+  const matrix = categoryMatrix(data.pairs);
   // groupA(AMR)-groupD(uncategorised) associated; groupB-groupC(both uncategorised) associated;
   // groupA(AMR)-groupB(uncategorised) disassociated; groupC-groupD(both uncategorised) disassociated
   const amrUncat = matrix.find((m) => m.key === "AMR × uncategorised");
-  const uncatUncat = matrix.find((m) => m.key === "uncategorised × uncategorised");
   assert.equal(amrUncat.associated, 1);
   assert.equal(amrUncat.disassociated, 1);
-  assert.equal(uncatUncat.associated, 1);
-  assert.equal(uncatUncat.disassociated, 1);
+  // fully-uncategorised combo is deliberately swamping and excluded
+  assert.equal(matrix.find((m) => m.key === "uncategorised × uncategorised"), undefined);
 });
 
 test("crossCategoryPairs finds only pairs whose two sides differ in category", () => {

@@ -35,19 +35,33 @@ export function resolvePairs(data, rows, direction) {
   return { matched, unmatched };
 }
 
+const UNCATEGORISED_COMBO_KEY = "uncategorised × uncategorised";
+
 /**
  * Category-by-category summary: for every unordered category combination
- * appearing among resolved pairs (e.g. "AMR × Virulence"), the count of
+ * appearing among `pairs` (e.g. "AMR × Virulence"), the count of
  * associated and disassociated pairs. Answers "do AMR and virulence genes
- * tend to co-occur" directly (build brief §6 Phase 6).
+ * tend to co-occur" directly (build brief §6 Phase 6). Takes a pairs array
+ * (typically the pair table's current filter selection) rather than the
+ * whole dataset, so this stays consistent with every other pair-derived
+ * view once a Groups/pair-table filter is active.
+ *
+ * "uncategorised × uncategorised" is deliberately excluded: in a
+ * typical study most groups never get a tag at all, so that combination
+ * is usually the overwhelming majority of pairs and swamps every
+ * combination that actually involves a category — it doesn't answer any
+ * question this matrix exists to answer, it just crowds out the ones
+ * that do. Combinations with exactly one uncategorised side (e.g. "AMR ×
+ * uncategorised") stay, since those are genuinely informative.
  */
-export function categoryMatrix(data) {
+export function categoryMatrix(pairs) {
   const combos = new Map(); // comboKey -> { categories: [a,b], associated, disassociated }
-  for (const pair of data.pairs) {
+  for (const pair of pairs) {
     const catA = categoryFor(pair.resolvedA);
     const catB = categoryFor(pair.resolvedB);
     const categories = [catA, catB].sort();
     const key = categories.join(" × ");
+    if (key === UNCATEGORISED_COMBO_KEY) continue;
     if (!combos.has(key)) combos.set(key, { key, categories, associated: 0, disassociated: 0 });
     combos.get(key)[pair.direction === "associated" ? "associated" : "disassociated"]++;
   }

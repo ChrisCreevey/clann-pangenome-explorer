@@ -40,13 +40,14 @@ const DEFAULT_PAIR_CRITERIA = { direction: ["associated", "disassociated"], cros
  * filter's current selection (or null, unrestricted) — always applied,
  * both sides of a pair must be in it, via filterPairs()'s groupIds
  * criterion. Returns a handle with setGroupFilter(groupIds) so the Groups
- * filter can keep this in sync on every edit, and setSummaryHandle() so
- * the annotation-summary card (mounted after this one) can be kept in
- * sync with the same filtered pairs without recomputing its own filters.
+ * filter can keep this in sync on every edit, and addDownstreamHandle()
+ * so other cards mounted after this one (annotation summary, category
+ * matrix) can be kept in sync with the same filtered pairs without each
+ * recomputing its own copy of the filter logic.
  */
 function renderPairCard(panel, data, opts = {}) {
   let groupIdFilter = opts.groupIds || null;
-  let summaryHandle = null;
+  const downstreamHandles = [];
 
   const c = card("Association / disassociation pairs");
   if (data.unmatchedPairs.length) {
@@ -142,7 +143,7 @@ function renderPairCard(panel, data, opts = {}) {
       currentPairs = filterPairs(data, data.pairs, criteria);
       handle.setPairs(currentPairs);
       updateCount();
-      summaryHandle?.setPairs(currentPairs);
+      downstreamHandles.forEach((h) => h.setPairs(currentPairs));
     });
   }
 
@@ -172,7 +173,7 @@ function renderPairCard(panel, data, opts = {}) {
 
   return {
     getCurrentPairs: () => currentPairs,
-    setSummaryHandle(handle) { summaryHandle = handle; }, // wired once the summary card mounts, just below
+    addDownstreamHandle(handle) { downstreamHandles.push(handle); }, // wired once the summary/matrix cards mount, just below
     setGroupFilter(groupIds) {
       groupIdFilter = groupIds || null;
       applyFilters();
@@ -180,12 +181,23 @@ function renderPairCard(panel, data, opts = {}) {
   };
 }
 
-function renderMatrixCard(panel, data) {
+/**
+ * Category-by-category matrix, kept in sync with the pair table's current
+ * selection (same as the annotation summary card) rather than the whole
+ * dataset — otherwise this would show counts inconsistent with everything
+ * else on the page once a Groups filter or pair-table filter is active.
+ */
+function renderMatrixCard(panel, data, initialPairs) {
   const c = card("Category-by-category summary");
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "Reflects the pair table's current selection above. \"uncategorised × uncategorised\" is omitted — with no tags applied, it's usually most of the pangenome and swamps every other combination.";
+  c.appendChild(hint);
   const div = document.createElement("div");
   c.appendChild(div);
   panel.appendChild(c);
-  renderCategoryMatrix(div, categoryMatrix(data));
+  renderCategoryMatrix(div, categoryMatrix(initialPairs));
+  return { setPairs: (pairs) => renderCategoryMatrix(div, categoryMatrix(pairs)) };
 }
 
 /**
@@ -263,9 +275,10 @@ function renderNetworkCard(panel, data, opts = {}) {
 export function mountCoinfinderCards(panel, data, opts = {}) {
   if (!data.pairs.length && !data.unmatchedPairs.length) return null; // nothing loaded yet — no empty cards to show
   const pairCardHandle = renderPairCard(panel, data, opts);
-  renderMatrixCard(panel, data);
+  const matrixHandle = renderMatrixCard(panel, data, pairCardHandle.getCurrentPairs());
+  pairCardHandle.addDownstreamHandle(matrixHandle);
   const summaryHandle = renderSummaryCard(panel, data, pairCardHandle.getCurrentPairs());
-  pairCardHandle.setSummaryHandle(summaryHandle);
+  pairCardHandle.addDownstreamHandle(summaryHandle);
   const networkHandle = renderNetworkCard(panel, data, opts);
   return { pairCardHandle, networkHandle };
 }
