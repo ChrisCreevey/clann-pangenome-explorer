@@ -126,7 +126,7 @@ export function parseRoary(text) {
  * groupsMeta holds only { groupId, representativeId, annotation } per row
  * (no rawRow), consumed by assemblePangenomeData in index.js.
  */
-export async function parseRoaryStream(lineIterator) {
+export async function parseRoaryStream(lineIterator, { onProgress } = {}) {
   let headerInfo = null;
   let builder = null;
   const groupsMeta = [];
@@ -138,11 +138,13 @@ export async function parseRoaryStream(lineIterator) {
     if (!headerInfo) {
       headerInfo = parseHeaderLine(line);
       builder = new StreamingMatrixBuilder(headerInfo.genomeNames.length);
+      if (onProgress) onProgress({ rows: 0, genomeCount: headerInfo.genomeNames.length });
       continue;
     }
     const { meta, rawRow } = parseDataLineStreaming(line, headerInfo);
     builder.addRow(rawRow);
     groupsMeta.push(meta);
+    if (onProgress && groupsMeta.length % 5000 === 0) onProgress({ rows: groupsMeta.length });
   }
 
   if (!headerInfo || groupsMeta.length === 0) {

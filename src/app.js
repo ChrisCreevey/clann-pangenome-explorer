@@ -169,11 +169,27 @@ function formatBytes(bytes) {
   return `${bytes.toLocaleString()} bytes`;
 }
 
+function memoryUsageMB() {
+  // performance.memory is Chrome-only and non-standard, but it's exactly
+  // the signal needed here: if the tab is heading for an OOM crash (which
+  // wipes the JS heap and any in-memory state with it), this is the only
+  // way to see the climb in the console before that happens.
+  const mem = performance.memory;
+  return mem ? `${(mem.usedJSHeapSize / 1e6).toFixed(0)}MB / limit ${(mem.jsHeapSizeLimit / 1e6).toFixed(0)}MB` : "unavailable";
+}
+
 /** Load a large uncompressed Roary/Panaroo matrix by streaming lines — never materialises the whole file as one string. */
 async function openFileStreaming(file) {
   showBusy();
+  console.log(`Streaming ${file.name} (${(file.size / 1e9).toFixed(2)} GB)... heap: ${memoryUsageMB()}`);
   try {
-    const data = await parseRoaryFromLines(readLines(file), { filename: file.name });
+    const data = await parseRoaryFromLines(readLines(file), {
+      filename: file.name,
+      onProgress: ({ rows, genomeCount }) => {
+        if (genomeCount !== undefined) console.log(`Header parsed: ${genomeCount} genome columns. heap: ${memoryUsageMB()}`);
+        else console.log(`...${rows.toLocaleString()} rows parsed. heap: ${memoryUsageMB()}`);
+      },
+    });
     loadData(data, file.name);
   } catch (err) {
     showError(`Couldn't parse ${file.name}: ${err && err.message ? err.message : err}`);

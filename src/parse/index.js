@@ -64,7 +64,7 @@ export function parse(text, opts = {}) {
  * goes straight to assembling the rest of PangenomeData around them.
  */
 export async function parseRoaryFromLines(lineIterator, opts = {}) {
-  const raw = await parseRoaryStream(lineIterator);
+  const raw = await parseRoaryStream(lineIterator, { onProgress: opts.onProgress });
   return assemblePangenomeData(raw.genomeNames, raw.groupsMeta, raw.presenceMatrix, raw.geneIdsByGroup, {
     sourceFilename: opts.filename,
     format: "roary",
