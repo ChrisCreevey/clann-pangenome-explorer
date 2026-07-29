@@ -185,9 +185,9 @@ async function openFileStreaming(file) {
   try {
     const data = await parseRoaryFromLines(readLines(file), {
       filename: file.name,
-      onProgress: ({ rows, genomeCount }) => {
+      onProgress: ({ rows, genomeCount, lastLineLength }) => {
         if (genomeCount !== undefined) console.log(`Header parsed: ${genomeCount} genome columns. heap: ${memoryUsageMB()}`);
-        else console.log(`...${rows.toLocaleString()} rows parsed. heap: ${memoryUsageMB()}`);
+        else console.log(`...row ${rows.toLocaleString()} (last line: ${lastLineLength.toLocaleString()} chars). heap: ${memoryUsageMB()}`);
       },
     });
     loadData(data, file.name);

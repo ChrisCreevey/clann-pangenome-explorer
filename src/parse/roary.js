@@ -144,7 +144,12 @@ export async function parseRoaryStream(lineIterator, { onProgress } = {}) {
     const { meta, rawRow } = parseDataLineStreaming(line, headerInfo);
     builder.addRow(rawRow);
     groupsMeta.push(meta);
-    if (onProgress && groupsMeta.length % 5000 === 0) onProgress({ rows: groupsMeta.length });
+    // Tight interval, and unconditional for the first 20 rows — a memory
+    // blowup from a handful of pathologically large rows (a lot of real
+    // gene-ID text in a cell, not a blank one) needs to show up within a
+    // few rows, not after a 5,000-row gap that a crash can swallow whole.
+    const n = groupsMeta.length;
+    if (onProgress && (n <= 20 || n % 200 === 0)) onProgress({ rows: n, lastLineLength: line.length });
   }
 
   if (!headerInfo || groupsMeta.length === 0) {
