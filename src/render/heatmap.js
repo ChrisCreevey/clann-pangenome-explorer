@@ -72,6 +72,7 @@ export function renderHeatmap(container, data, opts = {}) {
     <button class="act" id="hmExportSvg" style="width:auto">Export SVG</button>
     <span class="hint" id="hmNote"></span>
     <span class="hint" id="hmNoteCol"></span>
+    <span class="hint" id="hmDownsampleNote"></span>
   `;
   container.appendChild(controls);
 
@@ -86,6 +87,7 @@ export function renderHeatmap(container, data, opts = {}) {
   let rowOrder = groups.map((_, i) => i);
   let colOrder = data.genomes.map((g) => g.index);
   let offscreen = null;
+  let rasterRows = 0; // offscreen.height after any binning below — the actual pixel-row count, not rowOrder.length
   let view = { k: 1, x: 0, y: 0 };
   let rowSortMode = "frequency";
 
@@ -93,27 +95,63 @@ export function renderHeatmap(container, data, opts = {}) {
     return FREQ_CLASS_RGB[group.freqClass] || EMPTY_RGB;
   }
 
+  // A canvas/ImageData sized 1px per group is exactly what makes this fast
+  // at ordinary scale (hundreds to low thousands of groups) — but at
+  // hundreds of thousands of groups (a real large Roary/Panaroo study),
+  // genomeCount x rowOrder.length x 4 bytes can run into the tens of GB,
+  // and rowOrder.length alone can exceed a browser's hard per-dimension
+  // canvas limit (commonly ~32,767px) regardless of memory. Past
+  // MAX_RASTER_ROWS, bin multiple adjacent (pre-sorted) rows into one
+  // output pixel row, shaded by the fraction of genomes present within
+  // that bin — an aggregated overview, same "capped and flagged as
+  // approximate at large scale" approach already used for the
+  // accumulation curves and the SVG export's cell-count guard below.
+  const MAX_RASTER_ROWS = 4000;
+
   function rasterise() {
-    const w = genomeCount, h = rowOrder.length;
+    const w = genomeCount;
+    const totalRows = rowOrder.length;
+    const h = Math.min(totalRows, MAX_RASTER_ROWS);
+    const binSize = Math.ceil(totalRows / h); // 1 when not binning — every branch below then behaves exactly as before
+    rasterRows = h;
+
     offscreen = document.createElement("canvas");
     offscreen.width = w;
     offscreen.height = h;
     const octx = offscreen.getContext("2d");
     const imageData = octx.createImageData(w, h);
     const buf = imageData.data;
+    const presentCounts = new Uint32Array(w); // reused per bin, not reallocated per row
 
-    rowOrder.forEach((groupIdx, row) => {
-      const group = groups[groupIdx];
-      const [pr, pg, pb] = rowColor(group);
-      const vector = presenceVector(data, group.groupIndex);
-      for (let col = 0; col < w; col++) {
-        const present = vector[colOrder[col]] > 0;
-        const [r, g, b] = present ? [pr, pg, pb] : EMPTY_RGB;
-        const idx = (row * w + col) * 4;
-        buf[idx] = r; buf[idx + 1] = g; buf[idx + 2] = b; buf[idx + 3] = 255;
+    for (let outRow = 0; outRow < h; outRow++) {
+      const start = outRow * binSize;
+      const end = Math.min(start + binSize, totalRows);
+      const binRows = end - start;
+      const [dr, dg, db] = rowColor(groups[rowOrder[start]]); // representative colour for the bin
+      presentCounts.fill(0);
+      for (let r = start; r < end; r++) {
+        const vector = presenceVector(data, groups[rowOrder[r]].groupIndex);
+        for (let col = 0; col < w; col++) {
+          if (vector[colOrder[col]] > 0) presentCounts[col]++;
+        }
       }
-    });
+      for (let col = 0; col < w; col++) {
+        const frac = presentCounts[col] / binRows; // exactly 0 or 1 when binSize === 1, i.e. unchanged behaviour at ordinary scale
+        const idx = (outRow * w + col) * 4;
+        buf[idx] = Math.round(EMPTY_RGB[0] + (dr - EMPTY_RGB[0]) * frac);
+        buf[idx + 1] = Math.round(EMPTY_RGB[1] + (dg - EMPTY_RGB[1]) * frac);
+        buf[idx + 2] = Math.round(EMPTY_RGB[2] + (db - EMPTY_RGB[2]) * frac);
+        buf[idx + 3] = 255;
+      }
+    }
     octx.putImageData(imageData, 0, 0);
+
+    const downsampleNote = container.querySelector("#hmDownsampleNote");
+    if (downsampleNote) {
+      downsampleNote.textContent = binSize > 1
+        ? `Aggregated view: ${binSize} groups per pixel row (${totalRows.toLocaleString()} groups total).`
+        : "";
+    }
   }
 
   const MAX_CANVAS_HEIGHT = 500;
@@ -123,7 +161,7 @@ export function renderHeatmap(container, data, opts = {}) {
     // Fit both dimensions — using width alone zooms in on only the first few
     // rows whenever there are far more groups than genomes (the common case).
     const kW = displayW / genomeCount;
-    const kH = MAX_CANVAS_HEIGHT / rowOrder.length;
+    const kH = MAX_CANVAS_HEIGHT / rasterRows;
     view.k = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(kW, kH)));
     view.x = 0;
     view.y = 0;
@@ -131,7 +169,7 @@ export function renderHeatmap(container, data, opts = {}) {
 
   function draw() {
     const displayW = canvasWrap.clientWidth || 640;
-    const displayH = Math.min(MAX_CANVAS_HEIGHT, rowOrder.length * view.k + 20);
+    const displayH = Math.min(MAX_CANVAS_HEIGHT, rasterRows * view.k + 20);
     canvas.width = displayW;
     canvas.height = Math.max(160, displayH);
     ctx.imageSmoothingEnabled = false;
@@ -235,11 +273,14 @@ export function renderHeatmap(container, data, opts = {}) {
   container.querySelector("#hmSortCol").addEventListener("change", (e) => applyColumnSort(e.target.value));
 
   container.querySelector("#hmExportPng").addEventListener("click", () => {
-    // Upscale from the 1px-per-cell raster so the exported image isn't illegibly tiny.
-    const scale = Math.max(2, Math.min(8, Math.round(400 / Math.max(genomeCount, rowOrder.length))));
+    // Scale off rasterRows (the actual offscreen pixel-row count), not
+    // rowOrder.length — once binned, those differ, and sizing this off the
+    // unbinned count would recreate the exact huge-canvas problem rasterise()
+    // exists to avoid.
+    const scale = Math.max(2, Math.min(8, Math.round(400 / Math.max(genomeCount, rasterRows))));
     const out = document.createElement("canvas");
     out.width = genomeCount * scale;
-    out.height = rowOrder.length * scale;
+    out.height = rasterRows * scale;
     const octx = out.getContext("2d");
     octx.imageSmoothingEnabled = false;
     octx.drawImage(offscreen, 0, 0, out.width, out.height);

@@ -39,8 +39,18 @@ export function renderGroupTable(container, groups, opts = {}) {
   countLabel.className = "hint";
   wrap.insertBefore(countLabel, table);
 
+  // pair-table.js already caps its DOM rows this way (500) for the same
+  // reason: one <tr> + several <td> per row is fine at ordinary scale, but
+  // building hundreds of thousands of them (the default, unfiltered Groups
+  // view on a large study) freezes or crashes the tab well before any
+  // parsing/rendering memory limit does. group-table.js had no such cap.
+  const MAX_ROWS = 500;
+
   function draw() {
-    countLabel.textContent = `${current.length} group${current.length === 1 ? "" : "s"}`;
+    const truncated = current.length > MAX_ROWS;
+    countLabel.textContent = truncated
+      ? `${current.length.toLocaleString()} groups (showing first ${MAX_ROWS} — narrow with filters to see more)`
+      : `${current.length} group${current.length === 1 ? "" : "s"}`;
     const sorted = current.slice().sort((a, b) => {
       const av = a[sortCol], bv = b[sortCol];
       if (av === bv) return 0;
@@ -68,7 +78,7 @@ export function renderGroupTable(container, groups, opts = {}) {
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    for (const group of sorted) {
+    for (const group of sorted.slice(0, MAX_ROWS)) {
       const tr = document.createElement("tr");
       if (opts.onRowClick) {
         tr.classList.add("row-clickable");
