@@ -322,7 +322,7 @@ export function renderNetworkGraph(container, data, opts = {}) {
   container.appendChild(controls);
   const layoutHint = document.createElement("div");
   layoutHint.className = "hint";
-  layoutHint.textContent = "Force-directed: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Circular/Grid are instant alternatives that ignore connectivity (Grid groups by category). Node size reflects degree (a cheap centrality proxy) and shrinks automatically as the drawn selection gets larger — override it with \"Node size ×\"/\"Edge width ×\" if the automatic sizing doesn't suit (both apply instantly, no redraw). Drag a node to reposition it (lost on the next redraw); scroll/pinch to zoom, drag the background to pan.";
+  layoutHint.textContent = "Force-directed: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Circular/Grid are instant alternatives that ignore connectivity (Grid groups by category). Node size reflects degree (a cheap centrality proxy); both node size and edge width shrink automatically as the drawn selection gets more crowded (by total node area and by edge count, respectively) — override either with \"Node size ×\"/\"Edge width ×\" if the automatic sizing doesn't suit (both apply instantly, no redraw). Drag a node to reposition it (lost on the next redraw); scroll/pinch to zoom, drag the background to pan.";
   container.appendChild(layoutHint);
   const note = document.createElement("div");
   note.className = "hint";
@@ -506,10 +506,45 @@ export function renderNetworkGraph(container, data, opts = {}) {
       : layoutNodes(nodeIds, edges, { width, height });
     const degree = degreeOf(nodeIds, edges); // centrality proxy (see layoutNodes' doc comment) — also drives node radius below
 
-    // Shrinks nodes as the drawn selection grows, so a few hundred nodes
-    // don't overlap into an unreadable smear — pure node-count-based, so
-    // it applies the same regardless of which layout mode is active.
-    const crowdScale = Math.min(1, 22 / Math.sqrt(Math.max(1, nodeIds.length)));
+    // Node radius before any crowding shrink — degree (centrality proxy)
+    // mapped to a 4-14px range. Used both to size each node below and, via
+    // its total area, to derive crowdScale just after.
+    function unscaledRadius(deg) {
+      return 4 + Math.min(10, Math.sqrt(deg || 0) * 2.5);
+    }
+
+    // Shrink nodes so their combined area stays within a fixed fraction of
+    // the canvas, however that total arises — many small-degree nodes or a
+    // few huge-degree ones. The previous formula (22/sqrt(nodeCount)) only
+    // looked at node count, so it was essentially a no-op at a few hundred
+    // nodes (~0.98 at 500) despite those nodes being drawn at their full
+    // degree-scaled size — exactly the case that needed a manual 0.05x
+    // override to become readable, at 500 nodes / 6,382 edges (avg degree
+    // ~25, i.e. most nodes sat at the 14px radius cap). Basing the shrink on
+    // total node *area* instead means a dense, high-degree graph — the kind
+    // that actually looks crowded — shrinks much more than a sparse graph
+    // with the same node count, which the old formula couldn't distinguish.
+    const NODE_INK_BUDGET_FRACTION = 0.18; // node fills target at most ~18% of canvas area
+    const MIN_NODE_RADIUS = 1.2;
+    let totalUnscaledArea = 0;
+    for (const id of nodeIds) {
+      const r = unscaledRadius(degree.get(id) || 0);
+      totalUnscaledArea += Math.PI * r * r;
+    }
+    const inkBudgetArea = width * height * NODE_INK_BUDGET_FRACTION;
+    const crowdScale = totalUnscaledArea > 0 ? Math.min(1, Math.sqrt(inkBudgetArea / totalUnscaledArea)) : 1;
+
+    // Same idea for edges, scaled by edge count rather than node count —
+    // edge clutter is driven by how many lines are drawn, not how many
+    // nodes they connect. The previous code had NO density scaling for
+    // edge width at all (a flat 1.2px/3px regardless of edge count), which
+    // was likely the bigger contributor to the crowding this was reported
+    // against — 6,382 same-width lines is a lot of ink regardless of node
+    // sizing. EDGE_REFERENCE_COUNT is where this formula returns ~1 (no
+    // change from today's default at ordinary, already-workable edge counts).
+    const EDGE_REFERENCE_COUNT = 150;
+    const MIN_EDGE_WIDTH = 0.15;
+    const edgeCrowdScale = Math.min(1, Math.sqrt(EDGE_REFERENCE_COUNT / Math.max(1, edges.length)));
 
     drawnCircles = []; // {circle, baseRadius} — for applyVisualScale() to rescale in place without a full redraw
     drawnLines = []; // {line, baseWidth}
@@ -522,9 +557,9 @@ export function renderNetworkGraph(container, data, opts = {}) {
       line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
       const isTop = topSignificantKeys && topSignificantKeys.has(`${e.pair.groupIdA}|${e.pair.groupIdB}|${e.pair.direction}`);
       line.setAttribute("stroke", e.pair.direction === "associated" ? ASSOC_COLOR : DISASSOC_COLOR);
-      const baseWidth = isTop ? 3 : 1.2;
+      const baseWidth = Math.max(MIN_EDGE_WIDTH, (isTop ? 3 : 1.2) * edgeCrowdScale);
       line.setAttribute("stroke-width", baseWidth);
-      line.setAttribute("opacity", isTop ? "0.95" : "0.45");
+      line.setAttribute("opacity", isTop ? "0.95" : Math.max(0.15, 0.45 * edgeCrowdScale));
       if (e.pair.direction === "disassociated") line.setAttribute("stroke-dasharray", "4 3");
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
       title.textContent = `${e.pair.groupIdA} — ${e.pair.groupIdB} (${e.pair.direction}${e.pair.significance != null ? `, significance ${e.pair.significance}` : ""})`;
@@ -539,8 +574,8 @@ export function renderNetworkGraph(container, data, opts = {}) {
       const group = groupById.get(id);
       const p = pos.get(id);
       const color = useCategories ? categoryColor(allCategories, categoryFor(group)) : (FREQ_CLASS_COLOR[group.freqClass] || "#999");
-      const baseRadius = Math.max(2, (4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5)) * crowdScale); // degree (centrality proxy) -> radius, shrunk by crowding, floored so it never vanishes
-      const baseBorderWidth = Math.max(0.4, baseRadius * 0.15); // proportional to radius, not a fixed "1" — otherwise a shrunk node is mostly white border
+      const baseRadius = Math.max(MIN_NODE_RADIUS, unscaledRadius(degree.get(id) || 0) * crowdScale); // degree (centrality proxy) -> radius, shrunk by crowding, floored so it never vanishes
+      const baseBorderWidth = Math.max(0.3, baseRadius * 0.15); // proportional to radius, not a fixed "1" — otherwise a shrunk node is mostly white border
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", baseRadius);
       circle.setAttribute("fill", color);
