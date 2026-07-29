@@ -18,6 +18,38 @@ function emptyNote(container, text) {
   container.appendChild(note);
 }
 
+/**
+ * Wheel-to-zoom / drag-to-pan / double-click-to-reset on `scene` within
+ * `svg`, identical interaction model to the heatmap and network graph —
+ * factored out here so any chart that gets too dense to read at its
+ * default size (many genomes, many bars) can opt in without
+ * reimplementing it. Only `scene`'s contents zoom; anything appended to
+ * `svg` directly (axes, labels) stays fixed, matching how the network
+ * graph keeps its own axis-equivalent chrome outside the pan/zoom scene.
+ */
+function attachPanZoom(svg, scene, { width, height, minScale = 0.5, maxScale = 20 } = {}) {
+  const view = { k: 1, x: 0, y: 0 };
+  function applyView() { scene.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`); }
+  svg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const mx = ((e.clientX - rect.left) / rect.width) * width;
+    const my = ((e.clientY - rect.top) / rect.height) * height;
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    const nk = Math.min(maxScale, Math.max(minScale, view.k * factor));
+    view.x = mx - (mx - view.x) * (nk / view.k);
+    view.y = my - (my - view.y) * (nk / view.k);
+    view.k = nk;
+    applyView();
+  }, { passive: false });
+  let drag = null;
+  svg.addEventListener("pointerdown", (e) => { drag = { x: e.clientX - view.x, y: e.clientY - view.y }; svg.setPointerCapture(e.pointerId); });
+  svg.addEventListener("pointermove", (e) => { if (!drag) return; view.x = e.clientX - drag.x; view.y = e.clientY - drag.y; applyView(); });
+  svg.addEventListener("pointerup", () => { drag = null; });
+  svg.addEventListener("dblclick", () => { view.k = 1; view.x = 0; view.y = 0; applyView(); });
+  return { reset: () => { view.k = 1; view.x = 0; view.y = 0; applyView(); } };
+}
+
 const FREQ_CLASS_COLORS = {
   core: "var(--compute-500)",
   softcore: "var(--moss-500)",
@@ -254,6 +286,8 @@ export function renderSingletonBarChart(container, byGenome) {
   const barW = (width - 2 * pad) / entries.length;
 
   const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart-svg" });
+  const scene = el("g", { class: "scene" });
+  svg.appendChild(scene);
   entries.forEach((e, i) => {
     const barH = (e.count / maxCount) * (height - 2 * pad);
     const rect = el("rect", {
@@ -266,16 +300,25 @@ export function renderSingletonBarChart(container, byGenome) {
     const title = el("title", {});
     title.textContent = `${e.name}: ${e.count} singleton group${e.count === 1 ? "" : "s"}`;
     rect.appendChild(title);
-    svg.appendChild(rect);
+    scene.appendChild(rect);
   });
   svg.appendChild(el("line", { class: "axis", x1: pad, x2: width - pad, y1: height - pad, y2: height - pad }));
 
+  // Y-axis: 0 at the bottom, the actual highest count at the top of the bar area.
+  const y0Label = el("text", { x: pad - 6, y: height - pad + 4, "text-anchor": "end" });
+  y0Label.textContent = "0";
+  svg.appendChild(y0Label);
+  const yMaxLabel = el("text", { x: pad - 6, y: pad + 4, "text-anchor": "end" });
+  yMaxLabel.textContent = String(maxCount);
+  svg.appendChild(yMaxLabel);
+
   const xLabel = el("text", { x: width / 2, y: height - 8, "text-anchor": "middle" });
-  xLabel.textContent = "Genomes, sorted by singleton count (hover a bar for its name) →";
+  xLabel.textContent = "Genomes, sorted by singleton count (hover a bar for its name) — scroll/pinch to zoom, drag to pan, double-click to reset →";
   svg.appendChild(xLabel);
 
   container.innerHTML = "";
   container.appendChild(svg);
+  attachPanZoom(svg, scene, { width, height });
 }
 
 /**
@@ -370,7 +413,10 @@ export function renderCategoryMatrix(container, combos) {
   table.appendChild(tbody);
 
   container.innerHTML = "";
-  container.appendChild(table);
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap"; // same scroll treatment as the Groups/pair tables — caps height instead of the card growing without bound for a large category list
+  wrap.appendChild(table);
+  container.appendChild(wrap);
   const legend = document.createElement("div");
   legend.className = "chart-legend";
   legend.innerHTML = `<span class="sw" style="background:var(--compute-500)"></span>Associated &nbsp; <span class="sw" style="background:var(--clay-500)"></span>Disassociated`;

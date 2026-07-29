@@ -299,6 +299,23 @@ export function renderNetworkGraph(container, data, opts = {}) {
   const useCategories = allCategories.length > 0;
   const groupById = new Map(data.groups.map((g) => [g.groupId, g])); // built once, not per node — avoids an O(nodes*groups) Array.find per draw
 
+  // Legend: nothing else on the page explained what a node's colour or size
+  // means, so a swatch/label per colour plus a plain-text note for size.
+  const legend = document.createElement("div");
+  legend.className = "chart-legend";
+  if (useCategories) {
+    const legendCats = [...allCategories, "uncategorised"];
+    legend.innerHTML = legendCats
+      .map((cat) => `<span class="sw" style="background:${categoryColor(allCategories, cat)}"></span>${cat}`)
+      .join(" &nbsp; ") + " &nbsp; · &nbsp; node size = degree (more connections → bigger)";
+  } else {
+    const freqLabels = { core: "Core", softcore: "Soft-core", shell: "Shell", cloud: "Cloud" };
+    legend.innerHTML = Object.entries(freqLabels)
+      .map(([key, label]) => `<span class="sw" style="background:${FREQ_CLASS_COLOR[key]}"></span>${label}`)
+      .join(" &nbsp; ") + " &nbsp; · &nbsp; node size = degree (more connections → bigger)";
+  }
+  container.appendChild(legend);
+
   /**
    * Cheap: apply the direction/significance/cross-category filters, no
    * layout, no degree cap. This is "the current selection" for export
