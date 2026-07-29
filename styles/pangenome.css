@@ -211,6 +211,7 @@ button.detail-close{width:auto;flex:none}
 .donut-svg .donut-total{font-size:26px;fill:var(--ink);font-family:var(--font-sans);font-weight:700}
 .donut-svg .donut-sub{font-size:11px;fill:var(--muted)}
 .genome-bars .tax-label{font-size:10px}
+.genome-bars .tax-label.qc-flagged{fill:var(--warn);font-weight:700}
 .taxonomy-svg .tax-bar,.category-bars .tax-bar{fill:var(--accent)}
 .taxonomy-svg .tax-label,.category-bars .tax-label{font-size:10px;fill:var(--ink);font-family:var(--font-mono)}
 .taxonomy-svg .tax-count,.category-bars .tax-count{font-size:10px;fill:var(--muted);font-family:var(--font-mono)}

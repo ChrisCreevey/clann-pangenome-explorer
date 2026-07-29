@@ -174,10 +174,15 @@ export function renderFrequencySpectrum(container, spectrum) {
 
 /**
  * Per-genome bar chart: three overlaid metrics (total genes, unique genes,
- * core genes present) per genome, for spotting an outlier genome at a glance.
+ * core genes present) per genome, for spotting an outlier genome at a
+ * glance. `opts.flaggedReasons` (optional: Map<genomeName, reasonStrings[]>
+ * from analysis/genome-qc.js) highlights a genome's label in the QC-warning
+ * colour and adds the reason(s) to its tooltip, rather than requiring the
+ * viewer to spot an odd-looking bar unaided.
  */
-export function renderGenomeBarChart(container, genomes) {
+export function renderGenomeBarChart(container, genomes, opts = {}) {
   if (!genomes.length) return emptyNote(container, "No genomes to summarise.");
+  const flaggedReasons = opts.flaggedReasons || new Map();
 
   const rowH = 20, groupGap = 6, pad = 8, labelW = 130;
   const barGap = 1, subBarH = (rowH - barGap * 2) / 3;
@@ -195,8 +200,17 @@ export function renderGenomeBarChart(container, genomes) {
   const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart-svg genome-bars" });
   genomes.forEach((genome, i) => {
     const y0 = pad + i * (rowH + groupGap);
-    const text = el("text", { class: "tax-label", x: labelW - 6, y: y0 + rowH / 2 + 4, "text-anchor": "end" });
-    text.textContent = genome.name;
+    const reasons = flaggedReasons.get(genome.name);
+    const text = el("text", {
+      class: reasons ? "tax-label qc-flagged" : "tax-label",
+      x: labelW - 6, y: y0 + rowH / 2 + 4, "text-anchor": "end",
+    });
+    text.textContent = (reasons ? "⚠ " : "") + genome.name;
+    if (reasons) {
+      const title = el("title", {});
+      title.textContent = `${genome.name} — ${reasons.join("; ")}`;
+      text.appendChild(title);
+    }
     svg.appendChild(text);
 
     series.forEach((s, si) => {
@@ -226,7 +240,7 @@ export function renderGenomeBarChart(container, genomes) {
   legend.className = "chart-legend";
   legend.innerHTML = series
     .map((s) => `<span class="sw" style="background:${s.color}"></span>${s.label}`)
-    .join(" &nbsp; ");
+    .join(" &nbsp; ") + (flaggedReasons.size ? " &nbsp; · &nbsp; ⚠ = flagged as a possible QC issue" : "");
   container.appendChild(legend);
 }
 

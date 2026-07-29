@@ -6,6 +6,7 @@
 
 import { frequencyClassCounts, frequencySpectrum } from "./analysis/frequency.js";
 import { computeAccumulationCurves } from "./analysis/accumulation.js";
+import { flagGenomeOutliers, describeQcReason, DEFAULT_QC_THRESHOLDS } from "./analysis/genome-qc.js";
 import { renderFrequencyDonut, renderFrequencySpectrum, renderGenomeBarChart, renderAccumulationCurves } from "./render/charts.js";
 import { renderHeatmap } from "./render/heatmap.js";
 import { mountGroupsCard, mountTopFilterExtras } from "./render/topfilter-ui.js";
@@ -82,10 +83,34 @@ export function mountExplorer(container, data) {
   panel.appendChild(spectrumCard);
 
   const genomeCard = card("Per-genome gene counts");
+  const qcControls = document.createElement("div");
+  qcControls.className = "chart-controls";
+  qcControls.innerHTML = `
+    <label>Flag core genes present below <input type="number" id="qcLowCorePct" min="1" max="100" step="1" value="${DEFAULT_QC_THRESHOLDS.lowCorePct}" style="width:60px">% of median</label>
+    <label>Flag unique genes above <input type="number" id="qcHighUniqueX" min="1" step="0.5" value="${DEFAULT_QC_THRESHOLDS.highUniqueMultiplier}" style="width:60px">× median</label>
+  `;
+  genomeCard.appendChild(qcControls);
+  const qcSummary = document.createElement("div");
+  qcSummary.className = "hint";
+  genomeCard.appendChild(qcSummary);
   const genomeDiv = document.createElement("div");
   genomeCard.appendChild(genomeDiv);
-  renderGenomeBarChart(genomeDiv, data.genomes);
   panel.appendChild(genomeCard);
+
+  function drawGenomeChart() {
+    const thresholds = {
+      lowCorePct: Number(qcControls.querySelector("#qcLowCorePct").value) || DEFAULT_QC_THRESHOLDS.lowCorePct,
+      highUniqueMultiplier: Number(qcControls.querySelector("#qcHighUniqueX").value) || DEFAULT_QC_THRESHOLDS.highUniqueMultiplier,
+    };
+    const { flagged } = flagGenomeOutliers(data.genomes, thresholds);
+    const flaggedReasons = new Map(flagged.map(({ genome, reasons }) => [genome.name, reasons.map(describeQcReason)]));
+    qcSummary.textContent = flagged.length
+      ? `${flagged.length} genome(s) flagged: ` + flagged.map(({ genome, reasons }) => `${genome.name} (${reasons.map(describeQcReason).join("; ")})`).join(" · ")
+      : "No genomes flagged at these thresholds — purely descriptive comparisons against the population median, not a formal test, so use judgement on borderline cases.";
+    renderGenomeBarChart(genomeDiv, data.genomes, { flaggedReasons });
+  }
+  qcControls.querySelectorAll("input").forEach((input) => input.addEventListener("input", drawGenomeChart));
+  drawGenomeChart();
 
   const accumCard = card("Pangenome and core-genome accumulation");
   const accumDiv = document.createElement("div");
