@@ -34,6 +34,8 @@ const ABSOLUTE_MAX_EDGES = 20000;
 // Below this estimate, drawing happens immediately on any filter change,
 // same threshold heatmap.js uses for its own clustering warning.
 const SLOW_WARNING_SECONDS = 1.5;
+// Same bounds as heatmap.js's own wheel-zoom, for consistency across the two SVG canvases.
+const MIN_ZOOM = 0.2, MAX_ZOOM = 40;
 
 /** Rough wall-clock estimate for laying out `nodeCount` nodes, for UI hinting only. */
 export function estimateLayoutSeconds(nodeCount, iterations = ITERATIONS) {
@@ -615,7 +617,7 @@ export function renderNetworkGraph(container, data, opts = {}) {
     const mx = ((e.clientX - rect.left) / rect.width) * width;
     const my = ((e.clientY - rect.top) / rect.height) * height;
     const factor = Math.exp(-e.deltaY * 0.0015);
-    const nk = Math.min(8, Math.max(0.2, view.k * factor));
+    const nk = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.k * factor));
     view.x = mx - (mx - view.x) * (nk / view.k);
     view.y = my - (my - view.y) * (nk / view.k);
     view.k = nk;
