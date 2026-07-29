@@ -8,9 +8,12 @@ import { frequencyClassCounts, frequencySpectrum } from "./analysis/frequency.js
 import { computeAccumulationCurves } from "./analysis/accumulation.js";
 import { flagGenomeOutliers, describeQcReason, DEFAULT_QC_THRESHOLDS } from "./analysis/genome-qc.js";
 import { renderFrequencyDonut, renderFrequencySpectrum, renderGenomeBarChart, renderAccumulationCurves } from "./render/charts.js";
+import { renderGroupTable } from "./render/group-table.js";
 import { renderHeatmap } from "./render/heatmap.js";
 import { mountGroupsCard, mountTopFilterExtras } from "./render/topfilter-ui.js";
 import { mountCoinfinderCards } from "./render/coinfinder-ui.js";
+import { downloadText } from "./render/download-util.js";
+import { GENOME_QC_EXPORT_FILENAME, genomeQcFlagsCsv } from "../export/genome-export.js";
 
 const FREQ_CLASS_LABELS = { core: "Core", softcore: "Soft-core", shell: "Shell", cloud: "Cloud" };
 
@@ -88,28 +91,52 @@ export function mountExplorer(container, data) {
   qcControls.innerHTML = `
     <label>Flag core genes present below <input type="number" id="qcLowCorePct" min="1" max="100" step="1" value="${DEFAULT_QC_THRESHOLDS.lowCorePct}" style="width:60px">% of median</label>
     <label>Flag unique genes above <input type="number" id="qcHighUniqueX" min="1" step="0.5" value="${DEFAULT_QC_THRESHOLDS.highUniqueMultiplier}" style="width:60px">× median</label>
+    <label>and at least <input type="number" id="qcMinUniqueExtra" min="0" step="1" value="${DEFAULT_QC_THRESHOLDS.minUniqueExtra}" style="width:60px">more than median</label>
+    <button class="act" id="qcExport" style="width:auto">Export flagged genomes (.csv)</button>
   `;
   genomeCard.appendChild(qcControls);
-  const qcSummary = document.createElement("div");
-  qcSummary.className = "hint";
-  genomeCard.appendChild(qcSummary);
+  const qcHint = document.createElement("div");
+  qcHint.className = "hint";
+  qcHint.textContent = "Purely descriptive comparisons against the population median (not a formal test) — use judgement on borderline cases. \"…more than median\" keeps a small population median (e.g. 2 unique genes) from trivially tripping the ×-median rule for everyone.";
+  genomeCard.appendChild(qcHint);
   const genomeDiv = document.createElement("div");
   genomeCard.appendChild(genomeDiv);
+  const qcTableDiv = document.createElement("div");
+  qcTableDiv.style.marginTop = "10px";
+  genomeCard.appendChild(qcTableDiv);
   panel.appendChild(genomeCard);
 
+  let currentFlagged = [];
   function drawGenomeChart() {
     const thresholds = {
       lowCorePct: Number(qcControls.querySelector("#qcLowCorePct").value) || DEFAULT_QC_THRESHOLDS.lowCorePct,
       highUniqueMultiplier: Number(qcControls.querySelector("#qcHighUniqueX").value) || DEFAULT_QC_THRESHOLDS.highUniqueMultiplier,
+      minUniqueExtra: Number(qcControls.querySelector("#qcMinUniqueExtra").value) || 0,
     };
     const { flagged } = flagGenomeOutliers(data.genomes, thresholds);
+    currentFlagged = flagged;
     const flaggedReasons = new Map(flagged.map(({ genome, reasons }) => [genome.name, reasons.map(describeQcReason)]));
-    qcSummary.textContent = flagged.length
-      ? `${flagged.length} genome(s) flagged: ` + flagged.map(({ genome, reasons }) => `${genome.name} (${reasons.map(describeQcReason).join("; ")})`).join(" · ")
-      : "No genomes flagged at these thresholds — purely descriptive comparisons against the population median, not a formal test, so use judgement on borderline cases.";
     renderGenomeBarChart(genomeDiv, data.genomes, { flaggedReasons });
+
+    const rows = flagged.map(({ genome, reasons, severity }) => ({
+      name: genome.name,
+      issues: reasons.map((r) => (r.type === "lowCore" ? "Low core" : "High unique")).join(", "),
+      detail: reasons.map(describeQcReason).join("; "),
+      severity,
+    }));
+    renderGroupTable(qcTableDiv, rows, {
+      columns: ["name", "issues", "detail", "severity"],
+      columnLabels: { name: "Genome", issues: "Issue(s)", detail: "Detail", severity: "Severity" },
+      numericColumns: ["severity"],
+      defaultSort: "severity",
+      itemLabel: "flagged genome",
+      truncatedHint: "sorted worst-first — tighten the thresholds above to narrow the list",
+    });
   }
   qcControls.querySelectorAll("input").forEach((input) => input.addEventListener("input", drawGenomeChart));
+  qcControls.querySelector("#qcExport").addEventListener("click", () => {
+    downloadText(GENOME_QC_EXPORT_FILENAME, genomeQcFlagsCsv(currentFlagged), "text/csv");
+  });
   drawGenomeChart();
 
   const accumCard = card("Pangenome and core-genome accumulation");

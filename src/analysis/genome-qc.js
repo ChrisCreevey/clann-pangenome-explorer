@@ -27,6 +27,14 @@ function median(values) {
 export const DEFAULT_QC_THRESHOLDS = {
   lowCorePct: 90, // flag when coreGenesPresent falls below this % of the population median
   highUniqueMultiplier: 3, // flag when uniqueGenes exceeds this multiple of the population median
+  // ...AND uniqueGenes exceeds the median by at least this many genes. A
+  // pure multiplier is only meaningful when the median itself isn't tiny —
+  // with a population median of 2 unique genes, "3x median" is just 6, so
+  // almost any genome with a modest handful of accessory singletons trips
+  // it despite that being unremarkable variation, not contamination. This
+  // floor only binds at small medians; once the median is large enough
+  // that 3x median already clears it on its own, the floor is a no-op.
+  minUniqueExtra: 10,
 };
 
 /**
@@ -35,7 +43,10 @@ export const DEFAULT_QC_THRESHOLDS = {
  * entry per flagged genome (not every genome) so the caller doesn't have to
  * filter — each entry lists which rule(s) it tripped and the actual values
  * behind that call, so the reason is always visible alongside the flag,
- * not just an unexplained highlighted bar.
+ * not just an unexplained highlighted bar. Each entry also carries a
+ * `severity` score (how far past its cutoff, in cutoff-relative terms) so
+ * callers can rank flagged genomes worst-first instead of listing them in
+ * arbitrary/file order.
  */
 export function flagGenomeOutliers(genomes, thresholds = DEFAULT_QC_THRESHOLDS) {
   if (!genomes.length) return { flagged: [], medianCore: 0, medianUnique: 0 };
@@ -44,6 +55,7 @@ export function flagGenomeOutliers(genomes, thresholds = DEFAULT_QC_THRESHOLDS) 
   const medianUnique = median(genomes.map((g) => g.uniqueGenes));
   const lowCoreCutoff = medianCore * (thresholds.lowCorePct / 100);
   const highUniqueCutoff = medianUnique * thresholds.highUniqueMultiplier;
+  const minUniqueExtra = thresholds.minUniqueExtra ?? DEFAULT_QC_THRESHOLDS.minUniqueExtra;
 
   const flagged = [];
   for (const genome of genomes) {
@@ -52,14 +64,21 @@ export function flagGenomeOutliers(genomes, thresholds = DEFAULT_QC_THRESHOLDS) 
     // vanishingly few) would otherwise make every genome trivially "below
     // the cutoff" — a degenerate case this rule shouldn't fire on.
     if (medianCore > 0 && genome.coreGenesPresent < lowCoreCutoff) {
-      reasons.push({ type: "lowCore", value: genome.coreGenesPresent, median: medianCore, cutoff: lowCoreCutoff });
+      reasons.push({
+        type: "lowCore", value: genome.coreGenesPresent, median: medianCore, cutoff: lowCoreCutoff,
+        severity: lowCoreCutoff > 0 ? lowCoreCutoff / Math.max(1, genome.coreGenesPresent) : 1,
+      });
     }
     // Same guard for medianUnique === 0 — otherwise any genome with even
-    // one unique gene would trip a "3x zero" cutoff.
-    if (medianUnique > 0 && genome.uniqueGenes > highUniqueCutoff) {
-      reasons.push({ type: "highUnique", value: genome.uniqueGenes, median: medianUnique, cutoff: highUniqueCutoff });
+    // one unique gene would trip a "3x zero" cutoff. minUniqueExtra guards
+    // the small-median case described above.
+    if (medianUnique > 0 && genome.uniqueGenes > highUniqueCutoff && (genome.uniqueGenes - medianUnique) >= minUniqueExtra) {
+      reasons.push({
+        type: "highUnique", value: genome.uniqueGenes, median: medianUnique, cutoff: highUniqueCutoff,
+        severity: genome.uniqueGenes / Math.max(1, highUniqueCutoff),
+      });
     }
-    if (reasons.length) flagged.push({ genome, reasons });
+    if (reasons.length) flagged.push({ genome, reasons, severity: Math.max(...reasons.map((r) => r.severity)) });
   }
   return { flagged, medianCore, medianUnique };
 }

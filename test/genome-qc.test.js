@@ -70,6 +70,35 @@ test("flagGenomeOutliers thresholds are adjustable", () => {
   assert.equal(loose.flagged.length, 0);
 });
 
+test("flagGenomeOutliers minUniqueExtra floor stops a tiny population median from trivially flagging everyone", () => {
+  // Reproduces the reported real-world case: population median unique genes
+  // is just 2, so "3x median" = 6 — almost any genome with a modest handful
+  // of accessory singletons would trip a pure multiplier despite that being
+  // unremarkable variation, not contamination.
+  const genomes = [
+    genome("G1", 1000, 2, 950),
+    genome("G2", 1000, 2, 950),
+    genome("G3", 1000, 2, 950),
+    genome("G4", 1000, 7, 950), // 3.5x median, but only 5 more than median
+    genome("G5", 1000, 50, 950), // genuinely far above the population, not just ratio-wise
+  ];
+  const { flagged } = flagGenomeOutliers(genomes, DEFAULT_QC_THRESHOLDS);
+  assert.deepEqual(flagged.map((f) => f.genome.name), ["G5"]);
+});
+
+test("flagGenomeOutliers reports a severity score, worse deviations scoring higher", () => {
+  const genomes = [
+    genome("G1", 1000, 10, 950),
+    genome("G2", 1000, 10, 950),
+    genome("G3", 1000, 10, 950),
+    genome("G4", 1000, 100, 950), // way past the high-unique cutoff
+    genome("G5", 1000, 32, 950), // just past the high-unique cutoff (30)
+  ];
+  const { flagged } = flagGenomeOutliers(genomes, DEFAULT_QC_THRESHOLDS);
+  const byName = Object.fromEntries(flagged.map((f) => [f.genome.name, f.severity]));
+  assert.ok(byName.G4 > byName.G5, "a more extreme deviation should score a higher severity");
+});
+
 test("describeQcReason produces a readable summary for both reason types", () => {
   const lowCore = { type: "lowCore", value: 300, median: 950, cutoff: 855 };
   const highUnique = { type: "highUnique", value: 80, median: 10, cutoff: 30 };

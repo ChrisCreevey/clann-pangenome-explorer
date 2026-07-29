@@ -46,11 +46,14 @@ export function renderGroupTable(container, groups, opts = {}) {
   // parsing/rendering memory limit does. group-table.js had no such cap.
   const MAX_ROWS = 500;
 
+  const itemLabel = opts.itemLabel || "group"; // e.g. "genome" for a non-group table reusing this same sortable-table component
+  const truncatedHint = opts.truncatedHint || "narrow with filters to see more";
+
   function draw() {
     const truncated = current.length > MAX_ROWS;
     countLabel.textContent = truncated
-      ? `${current.length.toLocaleString()} groups (showing first ${MAX_ROWS} — narrow with filters to see more)`
-      : `${current.length} group${current.length === 1 ? "" : "s"}`;
+      ? `${current.length.toLocaleString()} ${itemLabel}s (showing first ${MAX_ROWS} — ${truncatedHint})`
+      : `${current.length} ${itemLabel}${current.length === 1 ? "" : "s"}`;
     const sorted = current.slice().sort((a, b) => {
       const av = a[sortCol], bv = b[sortCol];
       if (av === bv) return 0;
