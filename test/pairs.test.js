@@ -40,17 +40,22 @@ test("categoryFor falls back to 'uncategorised' for an untagged group", () => {
   assert.equal(categoryFor(groupA), "AMR");
 });
 
-test("categoryMatrix counts associated/disassociated pairs per unordered category combo, excluding uncategorised x uncategorised", () => {
+test("categoryMatrix excludes any combination involving an uncategorised group, keeping only tag-to-tag combos", () => {
   const data = loadWithPairs();
-  keywordTag(data, "AMR", ["beta-lactamase"]); // tags groupA only
+  keywordTag(data, "AMR", ["beta-lactamase"]); // groupA only
+  keywordTag(data, "Virulence", ["transporter"]); // groupD only
   const matrix = categoryMatrix(data.pairs);
-  // groupA(AMR)-groupD(uncategorised) associated; groupB-groupC(both uncategorised) associated;
-  // groupA(AMR)-groupB(uncategorised) disassociated; groupC-groupD(both uncategorised) disassociated
-  const amrUncat = matrix.find((m) => m.key === "AMR × uncategorised");
-  assert.equal(amrUncat.associated, 1);
-  assert.equal(amrUncat.disassociated, 1);
-  // fully-uncategorised combo is deliberately swamping and excluded
+  // groupA(AMR)-groupD(Virulence) associated -> kept, both sides tagged
+  const amrVir = matrix.find((m) => m.key === "AMR × Virulence");
+  assert.equal(amrVir.associated, 1);
+  assert.equal(amrVir.disassociated, 0);
+  // any combo touching an uncategorised group is excluded: groupB-groupC (both
+  // uncategorised) associated, groupA-groupB (AMR x uncategorised) disassociated,
+  // groupC-groupD (uncategorised x Virulence) disassociated
+  assert.equal(matrix.length, 1);
   assert.equal(matrix.find((m) => m.key === "uncategorised × uncategorised"), undefined);
+  assert.equal(matrix.find((m) => m.key === "AMR × uncategorised"), undefined);
+  assert.equal(matrix.find((m) => m.key === "Virulence × uncategorised"), undefined);
 });
 
 test("crossCategoryPairs finds only pairs whose two sides differ in category", () => {

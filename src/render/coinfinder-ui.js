@@ -191,7 +191,7 @@ function renderMatrixCard(panel, data, initialPairs) {
   const c = card("Category-by-category summary");
   const hint = document.createElement("div");
   hint.className = "hint";
-  hint.textContent = "Reflects the pair table's current selection above. \"uncategorised × uncategorised\" is omitted — with no tags applied, it's usually most of the pangenome and swamps every other combination.";
+  hint.textContent = "Reflects the pair table's current selection above. Combinations involving an uncategorised (untagged) group are omitted — with no tags applied, those are usually most of the pangenome and swamp the category-to-category comparisons this matrix is for.";
   c.appendChild(hint);
   const div = document.createElement("div");
   c.appendChild(div);
