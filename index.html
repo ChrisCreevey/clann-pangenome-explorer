@@ -84,7 +84,7 @@
       <div class="hint" id="datasetMeta">No file loaded yet.</div>
 
       <details class="sect" id="rowThresholds">
-        <summary>Frequency class thresholds</summary>
+        <summary>Frequency class thresholds (gene groups)</summary>
         <div class="hint">Roary's conventional defaults, shown below. Each is a minimum % of genomes a group must be present in. Lower boundaries automatically move below whichever one you change, so core &gt; soft-core &gt; shell always holds.</div>
         <div class="row"><label for="thCore">Core ≥ %</label></div>
         <input type="number" id="thCore" min="0" max="100" step="1" value="99">
@@ -96,7 +96,7 @@
       </details>
 
       <details class="sect" id="rowFilters" open>
-        <summary>Filters</summary>
+        <summary>Filters (gene groups)</summary>
         <div class="row"><label>Frequency class</label></div>
         <div class="row">
           <label><input type="checkbox" class="fFreqClass" value="core" checked> Core</label>
@@ -150,7 +150,7 @@
       </details>
 
       <details class="sect" id="rowAnnotation">
-        <summary>Annotation</summary>
+        <summary>Annotation (gene groups)</summary>
         <div class="hint">Workflow A: one row per group. Workflow B: one row per gene (rolled up to a per-group consensus) — detected automatically from the file.</div>
         <button class="act" id="loadAnnotationBtn">Upload annotation file…</button>
         <div class="hint" id="annotationStatus">No annotation file loaded.</div>
@@ -168,7 +168,7 @@
       </details>
 
       <details class="sect" id="rowTags">
-        <summary>Category tags</summary>
+        <summary>Category tags (gene groups)</summary>
         <div class="row"><label for="tagName">Tag name</label></div>
         <input type="text" id="tagName" placeholder="e.g. AMR">
         <div class="row"><label for="tagKeywords">Keywords (comma-separated)</label></div>
@@ -181,7 +181,7 @@
       </details>
 
       <details class="sect" id="rowCoinfinder">
-        <summary>CoinFinder pairs</summary>
+        <summary>CoinFinder pairs (gene groups)</summary>
         <button class="act" id="loadAssociatedBtn">Upload associated pairs…</button>
         <div class="hint" id="associatedStatus">No associated-pairs file loaded.</div>
         <button class="act" id="loadDisassociatedBtn">Upload disassociated pairs…</button>
