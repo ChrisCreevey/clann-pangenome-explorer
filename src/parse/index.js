@@ -15,7 +15,7 @@ import { parsePirate, looksLikePirate } from "./pirate.js";
 import { parsePanacota, looksLikePanacota } from "./panacota.js";
 import { parseGenericMatrix } from "./generic-matrix.js";
 import { ColumnMappingNeeded, splitDelimited, detectDelimiter, parsePresenceCell } from "./shared.js";
-import { buildMatrix } from "./matrix.js";
+import { buildMatrix, rowView } from "./matrix.js";
 import { assignFrequencyClasses, DEFAULT_THRESHOLDS } from "../analysis/frequency.js";
 
 export { ColumnMappingNeeded, splitDelimited, detectDelimiter, parsePresenceCell, assignFrequencyClasses };
@@ -92,11 +92,11 @@ function assemblePangenomeData(genomeNames, groupsMeta, presenceMatrix, geneIdsB
   const genomeTotals = genomeNames.map(() => ({ totalGenes: 0, uniqueGenes: 0, coreGenesPresent: 0 }));
 
   const groups = groupsMeta.map((g, groupIndex) => {
-    const base = groupIndex * genomeCount;
+    const row = rowView(presenceMatrix, groupIndex, genomeCount);
     let genomesPresentIn = 0;
     let sequencesTotal = 0;
     for (let genomeIndex = 0; genomeIndex < genomeCount; genomeIndex++) {
-      const copyCount = presenceMatrix[base + genomeIndex];
+      const copyCount = row[genomeIndex];
       if (copyCount > 0) genomesPresentIn++;
       sequencesTotal += copyCount;
     }
@@ -115,9 +115,9 @@ function assemblePangenomeData(genomeNames, groupsMeta, presenceMatrix, geneIdsB
   });
 
   for (const g of groups) {
-    const base = g.groupIndex * genomeCount;
+    const row = rowView(presenceMatrix, g.groupIndex, genomeCount);
     for (let genomeIndex = 0; genomeIndex < genomeCount; genomeIndex++) {
-      const copyCount = presenceMatrix[base + genomeIndex];
+      const copyCount = row[genomeIndex];
       if (copyCount <= 0) continue;
       const totals = genomeTotals[genomeIndex];
       totals.totalGenes += copyCount;

@@ -73,65 +73,139 @@ export function buildMatrix(rawGroups, genomeCount) {
 }
 
 /**
+ * A group-major Uint16Array matrix built out of fixed-size row chunks
+ * instead of one contiguous buffer. Used only by StreamingMatrixBuilder,
+ * where the final row count isn't known up front — a naive "double the
+ * buffer and copy" growth strategy (as buildMatrix's single allocation
+ * doesn't need, since it knows groupCount from the start) briefly holds
+ * *both* the old and new buffers alive during each copy. For a wide matrix
+ * that spike can rival or exceed the final matrix size — it's what caused
+ * a real 1.63GB/7,057-genome file to crash right at a doubling boundary
+ * despite every other optimisation here. A chunk, once allocated, is never
+ * resized or copied, so there is no such spike at any point.
+ */
+class ChunkedPresenceMatrix {
+  constructor(genomeCount, rowsPerChunk) {
+    this.genomeCount = genomeCount;
+    this.rowsPerChunk = rowsPerChunk;
+    this.chunks = [];
+    this.groupCount = 0; // set by the builder once the last row's been added
+  }
+
+  _chunkFor(rowIndex) {
+    const chunkIndex = Math.floor(rowIndex / this.rowsPerChunk);
+    let chunk = this.chunks[chunkIndex];
+    if (!chunk) {
+      chunk = new Uint16Array(this.rowsPerChunk * this.genomeCount);
+      this.chunks[chunkIndex] = chunk;
+    }
+    return { chunk, rowInChunk: rowIndex % this.rowsPerChunk };
+  }
+
+  setCell(rowIndex, genomeIndex, value) {
+    const { chunk, rowInChunk } = this._chunkFor(rowIndex);
+    chunk[rowInChunk * this.genomeCount + genomeIndex] = value;
+  }
+
+  get(rowIndex, genomeIndex) {
+    const chunk = this.chunks[Math.floor(rowIndex / this.rowsPerChunk)];
+    if (!chunk) return 0;
+    return chunk[(rowIndex % this.rowsPerChunk) * this.genomeCount + genomeIndex];
+  }
+
+  /** Zero-copy view of one row — safe because a row is never split across a chunk boundary. */
+  rowView(rowIndex) {
+    const chunk = this.chunks[Math.floor(rowIndex / this.rowsPerChunk)];
+    const rowInChunk = rowIndex % this.rowsPerChunk;
+    const base = rowInChunk * this.genomeCount;
+    return chunk ? chunk.subarray(base, base + this.genomeCount) : new Uint16Array(this.genomeCount);
+  }
+
+  /** Full group-major iteration, matching a flat Uint16Array's element order — used by tests/debugging, not the hot path. */
+  *[Symbol.iterator]() {
+    for (let rowIndex = 0; rowIndex < this.groupCount; rowIndex++) {
+      const row = this.rowView(rowIndex);
+      for (let g = 0; g < this.genomeCount; g++) yield row[g];
+    }
+  }
+}
+
+// Aim for roughly this many bytes per chunk — big enough that chunk-object
+// overhead and chunk count both stay small, small enough that no single
+// allocation is itself a large fraction of the heap limit.
+const TARGET_CHUNK_BYTES = 32_000_000;
+
+function rowsPerChunkFor(genomeCount) {
+  return Math.max(64, Math.floor(TARGET_CHUNK_BYTES / (genomeCount * 2)));
+}
+
+/**
  * Incrementally builds the same { presenceMatrix, geneIdsByGroup } shape as
  * buildMatrix, one row at a time, for streaming callers that don't have the
- * full row count up front. Critically, each row's raw cell-text array is
- * only ever needed transiently in addRow() — unlike buildMatrix (which is
- * handed every row's raw strings already collected into one array), nothing
- * here holds more than one row's worth of raw text at a time. The matrix
- * grows by doubling (like a typical dynamic array), so total copying stays
- * amortised O(final size) rather than O(final size) per row.
+ * full row count up front. Each row's raw cell-text array is only ever
+ * needed transiently in addRow() — unlike buildMatrix (handed every row's
+ * raw strings already collected into one array), nothing here holds more
+ * than one row's worth of raw text at a time. presenceMatrix itself is a
+ * ChunkedPresenceMatrix (see above) rather than a single growable buffer.
  */
 export class StreamingMatrixBuilder {
-  constructor(genomeCount, initialCapacity = 4096) {
+  constructor(genomeCount, rowsPerChunk = rowsPerChunkFor(genomeCount)) {
     this.genomeCount = genomeCount;
-    this.capacity = Math.max(1, initialCapacity);
-    this.presenceMatrix = new Uint16Array(genomeCount * this.capacity);
+    this.presenceMatrix = new ChunkedPresenceMatrix(genomeCount, rowsPerChunk);
     this.geneIdsByGroup = [];
     this.groupCount = 0;
   }
 
   addRow(rawRow) {
-    if (this.groupCount >= this.capacity) this._grow();
-    const base = this.groupCount * this.genomeCount;
+    const rowIndex = this.groupCount;
     const entries = [];
     for (let genomeIndex = 0; genomeIndex < this.genomeCount; genomeIndex++) {
       const { copyCount, geneIds } = parsePresenceCell(rawRow[genomeIndex]);
-      this.presenceMatrix[base + genomeIndex] = copyCount;
+      this.presenceMatrix.setCell(rowIndex, genomeIndex, copyCount);
       if (geneIds.length) entries.push([genomeIndex, geneIds.length === 1 ? geneIds[0] : geneIds]);
     }
-    this.geneIdsByGroup[this.groupCount] = finalizeGeneIdRow(entries, this.genomeCount);
+    this.geneIdsByGroup[rowIndex] = finalizeGeneIdRow(entries, this.genomeCount);
     this.groupCount++;
   }
 
-  _grow() {
-    this.capacity *= 2;
-    const grown = new Uint16Array(this.genomeCount * this.capacity);
-    grown.set(this.presenceMatrix);
-    this.presenceMatrix = grown;
-  }
-
-  /** Trim the matrix to the actual row count written. Call once, after the last addRow(). */
+  /** Call once, after the last addRow(). */
   finish() {
+    this.presenceMatrix.groupCount = this.groupCount;
     return {
-      presenceMatrix: this.presenceMatrix.subarray(0, this.groupCount * this.genomeCount),
+      presenceMatrix: this.presenceMatrix,
       geneIdsByGroup: this.geneIdsByGroup,
     };
   }
 }
 
+function isChunked(presenceMatrix) {
+  return presenceMatrix instanceof ChunkedPresenceMatrix;
+}
+
 export function copyCountAt(data, groupIndex, genomeIndex) {
-  return data.presenceMatrix[groupIndex * data.meta.genomeCount + genomeIndex];
+  const pm = data.presenceMatrix;
+  if (isChunked(pm)) return pm.get(groupIndex, genomeIndex);
+  return pm[groupIndex * data.meta.genomeCount + genomeIndex];
 }
 
 export function presentAt(data, groupIndex, genomeIndex) {
   return copyCountAt(data, groupIndex, genomeIndex) > 0;
 }
 
-/** Zero-copy view of one group's copy counts across every genome, in genome order. */
+/** View of one group's copy counts across every genome, in genome order (zero-copy either way). */
 export function presenceVector(data, groupIndex) {
-  const n = data.meta.genomeCount;
-  return data.presenceMatrix.subarray(groupIndex * n, groupIndex * n + n);
+  return rowView(data.presenceMatrix, groupIndex, data.meta.genomeCount);
+}
+
+/**
+ * Same row view presenceVector() gives, but callable before a full
+ * PangenomeData object exists (assemblePangenomeData in index.js builds
+ * per-group stats from presenceMatrix before `data` itself is assembled).
+ */
+export function rowView(presenceMatrix, groupIndex, genomeCount) {
+  if (isChunked(presenceMatrix)) return presenceMatrix.rowView(groupIndex);
+  const base = groupIndex * genomeCount;
+  return presenceMatrix.subarray(base, base + genomeCount);
 }
 
 /**
@@ -145,7 +219,12 @@ export function genomeVector(data, genomeIndex) {
   const genomeCount = data.meta.genomeCount;
   const groupCount = data.groups.length;
   const vector = new Uint16Array(groupCount);
-  for (let g = 0; g < groupCount; g++) vector[g] = data.presenceMatrix[g * genomeCount + genomeIndex];
+  const pm = data.presenceMatrix;
+  if (isChunked(pm)) {
+    for (let g = 0; g < groupCount; g++) vector[g] = pm.get(g, genomeIndex);
+  } else {
+    for (let g = 0; g < groupCount; g++) vector[g] = pm[g * genomeCount + genomeIndex];
+  }
   return vector;
 }
 
