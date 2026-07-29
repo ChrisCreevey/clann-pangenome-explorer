@@ -236,6 +236,106 @@ export function renderAccumulationCurves(container, curves) {
 }
 
 /**
+ * Singleton (genome-unique) group counts, one bar per genome, sorted
+ * highest-first so an outlier genome (poor assembly, contamination, wrong
+ * species) reads as a spike at the left without scanning a list. Genome
+ * names aren't drawn as axis labels — with hundreds or thousands of
+ * genomes that's unreadable — they show on hover instead, same trade-off
+ * as the gene frequency spectrum histogram.
+ */
+export function renderSingletonBarChart(container, byGenome) {
+  const entries = [...byGenome.entries()].map(([name, groups]) => ({ name, count: groups.length }));
+  const total = entries.reduce((s, e) => s + e.count, 0);
+  if (!total) return emptyNote(container, "No singleton (genome-unique) groups found.");
+  entries.sort((a, b) => b.count - a.count);
+
+  const width = 620, height = 200, pad = 34;
+  const maxCount = Math.max(...entries.map((e) => e.count)) || 1;
+  const barW = (width - 2 * pad) / entries.length;
+
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart-svg" });
+  entries.forEach((e, i) => {
+    const barH = (e.count / maxCount) * (height - 2 * pad);
+    const rect = el("rect", {
+      class: "hist-bar",
+      x: pad + i * barW,
+      y: height - pad - barH,
+      width: Math.max(1, barW - 1),
+      height: barH,
+    });
+    const title = el("title", {});
+    title.textContent = `${e.name}: ${e.count} singleton group${e.count === 1 ? "" : "s"}`;
+    rect.appendChild(title);
+    svg.appendChild(rect);
+  });
+  svg.appendChild(el("line", { class: "axis", x1: pad, x2: width - pad, y1: height - pad, y2: height - pad }));
+
+  const xLabel = el("text", { x: width / 2, y: height - 8, "text-anchor": "middle" });
+  xLabel.textContent = "Genomes, sorted by singleton count (hover a bar for its name) →";
+  svg.appendChild(xLabel);
+
+  container.innerHTML = "";
+  container.appendChild(svg);
+}
+
+/**
+ * Family-size distribution for the multi-copy candidate groups above the
+ * chosen threshold: a histogram over avg-copies-per-genome, binned into
+ * up to 12 equal-width bins spanning the candidates' actual range (not a
+ * fixed 1-per-genome-count scale like the frequency spectrum, since copy
+ * number here is continuous rather than bounded by genome count).
+ */
+export function renderMultiCopyHistogram(container, candidates) {
+  if (!candidates.length) return emptyNote(container, "No multi-copy candidate groups above this threshold.");
+
+  const values = candidates.map((g) => g.avgCopiesPerGenome);
+  const minV = Math.min(...values), maxV = Math.max(...values);
+  const range = maxV - minV;
+  const binCount = range > 0 ? Math.min(12, Math.max(4, Math.ceil(range))) : 1;
+  const binWidth = range > 0 ? range / binCount : 1;
+  const bins = new Array(binCount).fill(0);
+  for (const v of values) {
+    const idx = Math.min(binCount - 1, Math.floor((v - minV) / binWidth));
+    bins[idx]++;
+  }
+
+  const width = 620, height = 200, pad = 34;
+  const maxBin = Math.max(...bins) || 1;
+  const barW = (width - 2 * pad) / binCount;
+
+  const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart-svg" });
+  bins.forEach((count, i) => {
+    const lo = minV + i * binWidth, hi = minV + (i + 1) * binWidth;
+    const barH = (count / maxBin) * (height - 2 * pad);
+    const rect = el("rect", {
+      class: "hist-bar",
+      x: pad + i * barW,
+      y: height - pad - barH,
+      width: Math.max(1, barW - 1),
+      height: barH,
+    });
+    const title = el("title", {});
+    title.textContent = `${lo.toFixed(1)}–${hi.toFixed(1)} avg copies/genome: ${count} group${count === 1 ? "" : "s"}`;
+    rect.appendChild(title);
+    svg.appendChild(rect);
+  });
+  svg.appendChild(el("line", { class: "axis", x1: pad, x2: width - pad, y1: height - pad, y2: height - pad }));
+
+  const xLabel = el("text", { x: width / 2, y: height - 8, "text-anchor": "middle" });
+  xLabel.textContent = "Average copies per genome →";
+  svg.appendChild(xLabel);
+  const startLabel = el("text", { x: pad, y: height - pad + 14 });
+  startLabel.textContent = minV.toFixed(1);
+  svg.appendChild(startLabel);
+  const endLabel = el("text", { x: width - pad, y: height - pad + 14, "text-anchor": "end" });
+  endLabel.textContent = maxV.toFixed(1);
+  svg.appendChild(endLabel);
+
+  container.innerHTML = "";
+  container.appendChild(svg);
+}
+
+/**
  * Category-by-category association/disassociation summary (build brief
  * §6 Phase 6): one row per unordered category combination (from
  * categoryMatrix()), with a count and an inline proportional bar for

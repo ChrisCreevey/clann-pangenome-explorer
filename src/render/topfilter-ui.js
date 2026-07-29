@@ -14,10 +14,11 @@
 
 import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates } from "../analysis/topfilter.js";
 import { listTags } from "../analysis/tags.js";
+import { renderSingletonBarChart, renderMultiCopyHistogram } from "./charts.js";
 import { renderGroupTable, DEFAULT_COLS } from "./group-table.js";
 import { openGroupDetail } from "./group-detail.js";
 import { downloadText } from "./download-util.js";
-import { geneIdListText, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../../export/group-export.js";
+import { geneIdListText, geneIdTableCsv, groupTableCsv, multiCopyCandidatesCsv, MULTICOPY_EXPORT_FILENAME } from "../../export/group-export.js";
 import { runBusy } from "./busy.js";
 
 function debounce(fn, ms) {
@@ -233,31 +234,31 @@ function renderSingletonMultiCopyCard(panel, data) {
   const c = card("Singletons and multi-copy candidates");
   c.innerHTML += `
     <h4>Singleton groups per genome</h4>
-    <div class="hint" id="singletonSummary"></div>
+    <div class="hint">A genome that's an outlier here — far more singleton (unique-to-it) groups than the rest — is a data-quality signal worth checking: a poor assembly, a mislabeled sample, or contamination, rather than real biology.</div>
+    <div id="singletonChart"></div>
     <h4>Multi-copy family candidates</h4>
-    <div class="hint">A feeder into Clann's multi-copy supertree step.</div>
+    <div class="hint">Groups averaging well above 1 copy/genome are usually a paralogous gene family Roary/Panaroo/PIRATE couldn't cleanly split into one ortholog per genome — a feeder into Clann's multi-copy supertree step, not something presence/absence counting alone can resolve.</div>
     <div class="row"><label for="mcThreshold">Min avg copies per genome</label></div>
     <input type="number" id="mcThreshold" min="0" step="0.1" value="1.5">
+    <div id="mcHist"></div>
     <button class="act" id="mcExport" style="width:auto">Export ${MULTICOPY_EXPORT_FILENAME}</button>
     <div class="hint">Align and build a multi-copy gene-family supertree, then view it in <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a>.</div>
+    <div id="mcTable" style="margin-top:10px"></div>
   `;
-  const multiCopyDiv = document.createElement("div");
-  multiCopyDiv.style.marginTop = "10px";
-  c.appendChild(multiCopyDiv);
   panel.appendChild(c);
 
+  const singletonDiv = c.querySelector("#singletonChart");
+  const mcHistDiv = c.querySelector("#mcHist");
+  const multiCopyDiv = c.querySelector("#mcTable");
+
   const byGenome = singletonsPerGenome(data);
-  const summary = [...byGenome.entries()]
-    .filter(([, groups]) => groups.length)
-    .sort((a, b) => b[1].length - a[1].length)
-    .map(([name, groups]) => `${name}: ${groups.length}`)
-    .join(" · ") || "No singleton (genome-unique) groups found.";
-  c.querySelector("#singletonSummary").textContent = summary;
+  renderSingletonBarChart(singletonDiv, byGenome);
 
   let currentMultiCopy = [];
   function drawMultiCopy() {
     const threshold = Number(c.querySelector("#mcThreshold").value) || 0;
     currentMultiCopy = multiCopyCandidates(data, threshold);
+    renderMultiCopyHistogram(mcHistDiv, currentMultiCopy);
     renderGroupTable(multiCopyDiv, currentMultiCopy, { defaultSort: "avgCopiesPerGenome", onRowClick: (group) => openGroupDetail(data, group) });
   }
   c.querySelector("#mcThreshold").addEventListener("input", drawMultiCopy);
@@ -287,6 +288,7 @@ export function mountGroupsCard(panel, data, opts = {}) {
   exportRow.className = "chart-controls";
   exportRow.innerHTML = `
     <button class="act" id="filteredExportIds" style="width:auto">Export gene IDs (.txt)</button>
+    <button class="act" id="filteredExportGeneTable" style="width:auto">Export gene ID table (.csv)</button>
     <button class="act" id="filteredExportCsv" style="width:auto">Export table (.csv)</button>
   `;
   filteredCard.appendChild(exportRow);
@@ -316,10 +318,11 @@ export function mountGroupsCard(panel, data, opts = {}) {
   updateFilteredCount();
 
   exportRow.querySelector("#filteredExportIds").addEventListener("click", () => downloadText("filtered-groups-gene-ids.txt", geneIdListText(data, active.currentGroups)));
+  exportRow.querySelector("#filteredExportGeneTable").addEventListener("click", () => downloadText("filtered-groups-gene-ids.csv", geneIdTableCsv(data, active.currentGroups), "text/csv"));
   exportRow.querySelector("#filteredExportCsv").addEventListener("click", () => downloadText("filtered-groups.csv", groupTableCsv(active.data, active.currentGroups), "text/csv"));
   const crossLink = document.createElement("div");
   crossLink.className = "hint";
-  crossLink.innerHTML = `Extract these sequences from your genome FASTA/GFF set, then explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>.`;
+  crossLink.innerHTML = `This tool doesn't extract sequences itself — pangenome tools take one annotated file per genome, not a single merged one, so gene IDs are typically only unique <em>within</em> a genome, not across your whole set. Use the gene ID <strong>table</strong> export (not the flat list) — it keeps each gene ID paired with its genome — and look each one up in that <em>same</em> genome's own sequence file (a Prokka/Bakta <code>.ffn</code>/<code>.faa</code> is easiest: no coordinate math needed). Per genome, e.g.: <code>seqtk subseq genome_name.ffn &lt;(awk -F, -v g=genome_name '$2==g{print $3}' filtered-groups-gene-ids.csv) &gt; extracted.fasta</code> — then stage hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>.`;
   filteredCard.appendChild(crossLink);
 }
 

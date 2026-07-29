@@ -130,7 +130,7 @@ export function renderGroupDetail(container, data, group) {
   const crossLink = document.createElement("div");
   crossLink.className = "hint";
   crossLink.style.marginTop = "8px";
-  crossLink.innerHTML = `Extract these sequences, then explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>, or align and build a tree in <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a>.`;
+  crossLink.innerHTML = `Look each ID up in its <em>own</em> genome's sequence file (see the per-genome breakdown above) — gene IDs are typically only unique within a genome, not across the whole set, so a merged multi-genome FASTA risks mismatches. Then explore hits in <a href="https://chriscreevey.github.io/clann-blast-explorer/" target="_blank" rel="noopener">Clann BLAST Explorer</a>, or align and build a tree in <a href="https://chriscreevey.github.io/clann-tree-viewer/" target="_blank" rel="noopener">Clann Tree Viewer</a>.`;
   container.appendChild(crossLink);
 
   return closeBtn;
