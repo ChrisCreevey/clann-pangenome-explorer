@@ -112,7 +112,6 @@ export function renderHeatmap(container, data, opts = {}) {
     const w = genomeCount;
     const totalRows = rowOrder.length;
     const h = Math.min(totalRows, MAX_RASTER_ROWS);
-    const binSize = Math.ceil(totalRows / h); // 1 when not binning — every branch below then behaves exactly as before
     rasterRows = h;
 
     offscreen = document.createElement("canvas");
@@ -122,11 +121,22 @@ export function renderHeatmap(container, data, opts = {}) {
     const imageData = octx.createImageData(w, h);
     const buf = imageData.data;
     const presentCounts = new Uint32Array(w); // reused per bin, not reallocated per row
+    let maxBinRows = 1;
 
+    // Partition totalRows into h bins by even fractional split (floor of a
+    // running ratio), not totalRows/h rounded up into a fixed bin size —
+    // a fixed ceil()'d bin size overshoots when totalRows isn't a clean
+    // multiple of h, pushing the last several bins' start index past
+    // totalRows and reading past the end of rowOrder/groups entirely (the
+    // actual cause of the crash this was meant to prevent). This partition
+    // is exact: start/end are always within [0, totalRows], every bin has
+    // at least one row, and it degrades to start=outRow, end=outRow+1 (i.e.
+    // today's unbinned behaviour) whenever h === totalRows.
     for (let outRow = 0; outRow < h; outRow++) {
-      const start = outRow * binSize;
-      const end = Math.min(start + binSize, totalRows);
+      const start = Math.floor((outRow * totalRows) / h);
+      const end = Math.floor(((outRow + 1) * totalRows) / h);
       const binRows = end - start;
+      if (binRows > maxBinRows) maxBinRows = binRows;
       const [dr, dg, db] = rowColor(groups[rowOrder[start]]); // representative colour for the bin
       presentCounts.fill(0);
       for (let r = start; r < end; r++) {
@@ -136,7 +146,7 @@ export function renderHeatmap(container, data, opts = {}) {
         }
       }
       for (let col = 0; col < w; col++) {
-        const frac = presentCounts[col] / binRows; // exactly 0 or 1 when binSize === 1, i.e. unchanged behaviour at ordinary scale
+        const frac = presentCounts[col] / binRows; // exactly 0 or 1 when binRows === 1, i.e. unchanged behaviour at ordinary scale
         const idx = (outRow * w + col) * 4;
         buf[idx] = Math.round(EMPTY_RGB[0] + (dr - EMPTY_RGB[0]) * frac);
         buf[idx + 1] = Math.round(EMPTY_RGB[1] + (dg - EMPTY_RGB[1]) * frac);
@@ -148,8 +158,8 @@ export function renderHeatmap(container, data, opts = {}) {
 
     const downsampleNote = container.querySelector("#hmDownsampleNote");
     if (downsampleNote) {
-      downsampleNote.textContent = binSize > 1
-        ? `Aggregated view: ${binSize} groups per pixel row (${totalRows.toLocaleString()} groups total).`
+      downsampleNote.textContent = maxBinRows > 1
+        ? `Aggregated view: up to ${maxBinRows} groups per pixel row (${totalRows.toLocaleString()} groups total).`
         : "";
     }
   }
@@ -211,6 +221,8 @@ export function renderHeatmap(container, data, opts = {}) {
       draw();
     }).then(() => {
       if (mode === "cluster") note.textContent = `${groups.length} groups ordered by presence similarity.`;
+    }).catch((err) => {
+      note.textContent = `Couldn't render the heatmap: ${err && err.message ? err.message : err}`;
     });
   }
 
@@ -239,6 +251,8 @@ export function renderHeatmap(container, data, opts = {}) {
       draw();
     }).then(() => {
       if (mode === "cluster") noteCol.textContent = `${genomeCount} genomes ordered by copy-number similarity.`;
+    }).catch((err) => {
+      noteCol.textContent = `Couldn't render the heatmap: ${err && err.message ? err.message : err}`;
     });
   }
 
