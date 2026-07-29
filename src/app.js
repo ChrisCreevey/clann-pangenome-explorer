@@ -125,7 +125,40 @@ function showColumnMapping(err, text, name) {
 /** Read a File as text, transparently gunzipping/unzipping it first if it's compressed. */
 async function readTextFile(file) {
   const decompressed = await decompressIfNeeded(file);
-  return decompressed || { text: await file.text(), filename: file.name };
+  if (decompressed) return decompressed;
+  let text;
+  try {
+    text = await file.text();
+  } catch (err) {
+    // A huge uncompressed file can blow past the JS engine's max string
+    // length (RangeError) or exhaust available memory outright — surface
+    // that plainly instead of letting a generic message reach parseRoary.
+    if (err && err.name === "RangeError") {
+      throw new Error(
+        `This file is ${formatBytes(file.size)} and is too large for this browser to hold as a JS string ` +
+        `(hit a string-length/memory limit while decoding it). Try a 64-bit browser with more available memory, ` +
+        `or split the file into smaller chunks.`
+      );
+    }
+    throw err;
+  }
+  // Plain ASCII/UTF-8 CSV content decodes to roughly one JS char per byte;
+  // a decoded length far short of the file's byte size is a strong signal
+  // the read was cut off partway (commonly memory pressure), rather than
+  // the file genuinely being that short.
+  if (file.size > 50_000_000 && text.length < file.size * 0.5) {
+    console.warn(
+      `readTextFile: ${file.name} is ${formatBytes(file.size)} on disk but decoded to only ` +
+      `${text.length.toLocaleString()} characters — the read may have been truncated by a memory limit.`
+    );
+  }
+  return { text, filename: file.name };
+}
+
+function formatBytes(bytes) {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return `${bytes.toLocaleString()} bytes`;
 }
 
 async function openFile(file) {

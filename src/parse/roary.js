@@ -41,12 +41,34 @@ function countLeadingMetadataColumns(header) {
   return Math.max(count, 1); // at minimum, "Gene" itself is metadata
 }
 
+/**
+ * Build a one-line diagnostic for the "no data rows" case, so it's clear
+ * whether this is a genuinely empty/header-only file, a file whose content
+ * looks truncated (a common symptom of the browser running out of memory
+ * partway through decoding a very large file), or an unrecognised line
+ * ending / encoding.
+ */
+function diagnoseEmptyLines(text) {
+  const len = text.length;
+  if (len === 0) {
+    return "The file content read as completely empty — the browser may have run out of memory while reading it (check DevTools' console/memory tab for an out-of-memory warning), or the upload itself is empty.";
+  }
+  const hasNewline = /[\r\n]/.test(text);
+  const sample = JSON.stringify(text.slice(0, 120));
+  if (!hasNewline) {
+    return `Read ${len.toLocaleString()} characters but found no line breaks at all, so the whole file looks like one line. Sample of the start: ${sample}. This usually means an unrecognised line-ending style, or that the read was cut short before a partial line — try re-saving the file as plain CSV/UTF-8, or check whether it was truncated in transit.`;
+  }
+  return `Read ${len.toLocaleString()} characters, found line breaks, but only one non-empty line survived splitting — the content past the header may have been cut off. Sample of the start: ${sample}. If this file is very large, this can happen when the browser hits a memory limit partway through reading it; try a 64-bit browser with more available memory, or split the file.`;
+}
+
 export function parseRoary(text) {
   // Split on \n, \r\n, or a bare \r (classic-Mac-style line endings, which
   // some export tools still produce) — a plain /\r?\n/ never matches a lone
   // \r, so a file using it collapses into a single "line" and looks empty.
   const lines = text.split(/\r\n|\r|\n/).filter((l) => l.length > 0);
-  if (lines.length < 2) throw new Error("Roary file has no data rows.");
+  if (lines.length < 2) {
+    throw new Error(`Roary file has no data rows. ${diagnoseEmptyLines(text)}`);
+  }
   const delimiter = detectDelimiter(lines[0]);
   const header = splitDelimited(lines[0], delimiter);
   const metaColCount = countLeadingMetadataColumns(header);
