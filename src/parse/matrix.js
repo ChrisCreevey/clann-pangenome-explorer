@@ -9,12 +9,25 @@
 //     (index = groupIndex * genomeCount + genomeIndex), 2 bytes/cell with
 //     zero per-cell allocation. The same 10,000x20,000 study now costs
 //     ~400MB for this alone.
-//   - `geneIdsByGroup`: a sparse array (one entry per group, `undefined`
-//     unless that group has at least one gene-ID-bearing cell) of
-//     `Map<genomeIndex, string[]>`. Formats without gene IDs (PanACoTA,
-//     plain 0/1 generic matrices) never allocate anything here at all;
-//     formats with them only pay for genomes where a group is actually
-//     present, not for the (usually large) majority of absent cells.
+//   - `geneIdsByGroup`: one entry per group (`undefined` unless that group
+//     has at least one gene-ID-bearing cell), and — critically — that
+//     entry's *shape* adapts to how full the row is:
+//       - a `Map<genomeIndex, value>` for a sparse row (few genomes carry a
+//         gene ID), where a Map's per-entry cost is only paid for genomes
+//         actually present;
+//       - a plain dense `Array` indexed directly by genomeIndex for a row
+//         where most genomes carry a value, where a flat array's ~8
+//         bytes/slot beats a Map's ~tens of bytes *per entry* once
+//         occupancy passes roughly DENSE_OCCUPANCY_THRESHOLD.
+//     Roary/Panaroo output is sorted core-genes-first, so the very rows
+//     that are almost entirely filled in (one gene ID per genome, in
+//     nearly every column) are exactly the ones a naive all-Map design
+//     penalises hardest — this is what was blowing up memory on a large,
+//     mostly-non-empty matrix despite the Uint16Array optimisation below.
+//     Each `value` is a bare string for the common single-gene-ID cell, or
+//     a string[] only when a cell genuinely holds more than one ID (a
+//     multi-copy/paralog cell) — skipping the one-element-array wrapper
+//     for the majority case.
 //
 // Every consumer that used to read `group.cells[genomeName]` now calls the
 // accessors below with `group.groupIndex` and a genome index (from
@@ -22,7 +35,23 @@
 
 import { parsePresenceCell } from "./shared.js";
 
-/** Build the flat matrix + sparse gene-ID store from raw (unparsed) cell text. */
+const DENSE_OCCUPANCY_THRESHOLD = 0.1;
+
+/** [genomeIndex, value] pairs -> a Map (sparse row) or dense Array (row mostly filled in). */
+function finalizeGeneIdRow(entries, genomeCount) {
+  if (entries.length === 0) return undefined;
+  if (entries.length / genomeCount < DENSE_OCCUPANCY_THRESHOLD) return new Map(entries);
+  const dense = new Array(genomeCount);
+  for (const [genomeIndex, value] of entries) dense[genomeIndex] = value;
+  return dense;
+}
+
+function toGeneIdArray(value) {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+/** Build the flat matrix + adaptive gene-ID store from raw (unparsed) cell text. */
 export function buildMatrix(rawGroups, genomeCount) {
   const groupCount = rawGroups.length;
   const presenceMatrix = new Uint16Array(groupCount * genomeCount);
@@ -31,14 +60,13 @@ export function buildMatrix(rawGroups, genomeCount) {
   rawGroups.forEach((group, groupIndex) => {
     const base = groupIndex * genomeCount;
     const rawRow = group.rawRow;
+    const entries = [];
     for (let genomeIndex = 0; genomeIndex < genomeCount; genomeIndex++) {
       const { copyCount, geneIds } = parsePresenceCell(rawRow[genomeIndex]);
       presenceMatrix[base + genomeIndex] = copyCount;
-      if (geneIds.length) {
-        if (!geneIdsByGroup[groupIndex]) geneIdsByGroup[groupIndex] = new Map();
-        geneIdsByGroup[groupIndex].set(genomeIndex, geneIds);
-      }
+      if (geneIds.length) entries.push([genomeIndex, geneIds.length === 1 ? geneIds[0] : geneIds]);
     }
+    geneIdsByGroup[groupIndex] = finalizeGeneIdRow(entries, genomeCount);
   });
 
   return { presenceMatrix, geneIdsByGroup };
@@ -66,14 +94,13 @@ export class StreamingMatrixBuilder {
   addRow(rawRow) {
     if (this.groupCount >= this.capacity) this._grow();
     const base = this.groupCount * this.genomeCount;
+    const entries = [];
     for (let genomeIndex = 0; genomeIndex < this.genomeCount; genomeIndex++) {
       const { copyCount, geneIds } = parsePresenceCell(rawRow[genomeIndex]);
       this.presenceMatrix[base + genomeIndex] = copyCount;
-      if (geneIds.length) {
-        if (!this.geneIdsByGroup[this.groupCount]) this.geneIdsByGroup[this.groupCount] = new Map();
-        this.geneIdsByGroup[this.groupCount].set(genomeIndex, geneIds);
-      }
+      if (geneIds.length) entries.push([genomeIndex, geneIds.length === 1 ? geneIds[0] : geneIds]);
     }
+    this.geneIdsByGroup[this.groupCount] = finalizeGeneIdRow(entries, this.genomeCount);
     this.groupCount++;
   }
 
@@ -124,22 +151,37 @@ export function genomeVector(data, genomeIndex) {
 
 /** Gene IDs for one specific group/genome cell (empty array if none). */
 export function geneIdsAt(data, groupIndex, genomeIndex) {
-  const map = data.geneIdsByGroup[groupIndex];
-  return (map && map.get(genomeIndex)) || [];
+  const row = data.geneIdsByGroup[groupIndex];
+  if (!row) return [];
+  const value = Array.isArray(row) ? row[genomeIndex] : row.get(genomeIndex);
+  return toGeneIdArray(value);
 }
 
 /** Every gene ID across every genome for one group, flattened (order not significant). */
 export function allGeneIdsForGroup(data, groupIndex) {
-  const map = data.geneIdsByGroup[groupIndex];
-  if (!map) return [];
+  const row = data.geneIdsByGroup[groupIndex];
+  if (!row) return [];
   const ids = [];
-  for (const geneIds of map.values()) ids.push(...geneIds);
+  if (Array.isArray(row)) {
+    for (const value of row) if (value !== undefined) ids.push(...toGeneIdArray(value));
+  } else {
+    for (const value of row.values()) ids.push(...toGeneIdArray(value));
+  }
   return ids;
 }
 
 /** [genomeName, geneIds[]] pairs for one group, genomes with no gene IDs omitted. */
 export function geneIdsByGenomeForGroup(data, groupIndex) {
-  const map = data.geneIdsByGroup[groupIndex];
-  if (!map) return [];
-  return [...map.entries()].map(([genomeIndex, geneIds]) => [data.genomes[genomeIndex].name, geneIds]);
+  const row = data.geneIdsByGroup[groupIndex];
+  if (!row) return [];
+  const out = [];
+  if (Array.isArray(row)) {
+    for (let genomeIndex = 0; genomeIndex < row.length; genomeIndex++) {
+      const value = row[genomeIndex];
+      if (value !== undefined) out.push([data.genomes[genomeIndex].name, toGeneIdArray(value)]);
+    }
+  } else {
+    for (const [genomeIndex, value] of row.entries()) out.push([data.genomes[genomeIndex].name, toGeneIdArray(value)]);
+  }
+  return out;
 }

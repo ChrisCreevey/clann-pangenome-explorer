@@ -47,6 +47,12 @@ export function parsePresenceCell(value) {
     const n = Number(trimmed);
     return { copyCount: n, geneIds: [] };
   }
+  // Fast path: the overwhelming majority of gene-ID cells are a single ID
+  // with no ',' or ';' — split()/map()/filter() would still allocate three
+  // throwaway arrays for that case, which adds up fast across millions of
+  // cells (this was a measurable share of a large Roary matrix's peak
+  // memory during streaming). Skip straight to a one-element result.
+  if (!/[,;]/.test(trimmed)) return { copyCount: 1, geneIds: [trimmed] };
   const geneIds = trimmed.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
   return { copyCount: geneIds.length, geneIds };
 }
