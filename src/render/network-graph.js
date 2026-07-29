@@ -307,6 +307,8 @@ export function renderNetworkGraph(container, data, opts = {}) {
       </select>
     </label>
     <label>Max significance <input type="text" id="ngMaxSig" placeholder="no cap" style="width:70px"></label>
+    <label>Node size × <input type="number" id="ngNodeScale" min="0.1" max="10" step="0.1" value="1" style="width:60px"></label>
+    <label>Edge width × <input type="number" id="ngEdgeScale" min="0.1" max="10" step="0.1" value="1" style="width:60px"></label>
     <label><input type="checkbox" id="ngCrossOnly"> Cross-category only</label>
     <label><input type="checkbox" id="ngHighlightTop"> Highlight top 20 by significance</label>
     <label>Show top <input type="number" id="ngTopN" value="${DEFAULT_TOP_N}" min="10" step="10" style="width:70px"> most-connected groups</label>
@@ -318,7 +320,7 @@ export function renderNetworkGraph(container, data, opts = {}) {
   container.appendChild(controls);
   const layoutHint = document.createElement("div");
   layoutHint.className = "hint";
-  layoutHint.textContent = "Force-directed: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Circular/Grid are instant alternatives that ignore connectivity (Grid groups by category). Node size reflects degree (a cheap centrality proxy) and shrinks automatically as the drawn selection gets larger. Drag a node to reposition it (lost on the next redraw); scroll/pinch to zoom, drag the background to pan.";
+  layoutHint.textContent = "Force-directed: associated groups pull into clusters, separated from other clusters by connectivity; disassociated pairs push apart on top of that. Circular/Grid are instant alternatives that ignore connectivity (Grid groups by category). Node size reflects degree (a cheap centrality proxy) and shrinks automatically as the drawn selection gets larger — override it with \"Node size ×\"/\"Edge width ×\" if the automatic sizing doesn't suit (both apply instantly, no redraw). Drag a node to reposition it (lost on the next redraw); scroll/pinch to zoom, drag the background to pan.";
   container.appendChild(layoutHint);
   const note = document.createElement("div");
   note.className = "hint";
@@ -396,6 +398,16 @@ export function renderNetworkGraph(container, data, opts = {}) {
   let lastCappedNote = ""; // " — showing the top N most-connected of M groups...", reused by runLayout's own note text
   let pendingSelection = null; // the (capped) selection that would be drawn next
   let drawn = false; // whether pendingSelection has actually been laid out yet — guards the "Highlight" checkbox from bypassing the slow-draw gate
+  let drawnCircles = []; // {circle, baseRadius}, and drawnLines: {line, baseWidth} — reassigned by runLayout each redraw, read by applyVisualScale()
+  let drawnLines = [];
+
+  /** Manual node-size/edge-width multipliers, applied in place (no redraw, no recompute) — just scales what's already drawn from its stored base value. */
+  function applyVisualScale() {
+    const nodeScale = Number(container.querySelector("#ngNodeScale").value) || 1;
+    const edgeScale = Number(container.querySelector("#ngEdgeScale").value) || 1;
+    drawnCircles.forEach(({ circle, baseRadius }) => circle.setAttribute("r", baseRadius * nodeScale));
+    drawnLines.forEach(({ line, baseWidth }) => line.setAttribute("stroke-width", baseWidth * edgeScale));
+  }
 
   /**
    * Update the pair/node-count note for the current filter selection and
@@ -477,6 +489,9 @@ export function renderNetworkGraph(container, data, opts = {}) {
     // it applies the same regardless of which layout mode is active.
     const crowdScale = Math.min(1, 22 / Math.sqrt(Math.max(1, nodeIds.length)));
 
+    drawnCircles = []; // {circle, baseRadius} — for applyVisualScale() to rescale in place without a full redraw
+    drawnLines = []; // {line, baseWidth}
+
     const edgeLinesByNode = new Map(nodeIds.map((id) => [id, []])); // for live-updating edges while a node is dragged
     for (const e of edges) {
       const a = pos.get(e.a), b = pos.get(e.b);
@@ -485,7 +500,8 @@ export function renderNetworkGraph(container, data, opts = {}) {
       line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
       const isTop = topSignificantKeys && topSignificantKeys.has(`${e.pair.groupIdA}|${e.pair.groupIdB}|${e.pair.direction}`);
       line.setAttribute("stroke", e.pair.direction === "associated" ? ASSOC_COLOR : DISASSOC_COLOR);
-      line.setAttribute("stroke-width", isTop ? "3" : "1.2");
+      const baseWidth = isTop ? 3 : 1.2;
+      line.setAttribute("stroke-width", baseWidth);
       line.setAttribute("opacity", isTop ? "0.95" : "0.45");
       if (e.pair.direction === "disassociated") line.setAttribute("stroke-dasharray", "4 3");
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
@@ -494,18 +510,20 @@ export function renderNetworkGraph(container, data, opts = {}) {
       scene.appendChild(line);
       edgeLinesByNode.get(e.a).push({ line, end: "x1y1" });
       edgeLinesByNode.get(e.b).push({ line, end: "x2y2" });
+      drawnLines.push({ line, baseWidth });
     }
 
     for (const id of nodeIds) {
       const group = groupById.get(id);
       const p = pos.get(id);
       const color = useCategories ? categoryColor(allCategories, categoryFor(group)) : (FREQ_CLASS_COLOR[group.freqClass] || "#999");
-      const radius = Math.max(2, (4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5)) * crowdScale); // degree (centrality proxy) -> radius, shrunk by crowding, floored so it never vanishes
+      const baseRadius = Math.max(2, (4 + Math.min(10, Math.sqrt(degree.get(id) || 0) * 2.5)) * crowdScale); // degree (centrality proxy) -> radius, shrunk by crowding, floored so it never vanishes
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", radius);
+      circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", baseRadius);
       circle.setAttribute("fill", color);
       circle.setAttribute("stroke", "#fff"); circle.setAttribute("stroke-width", "1");
       circle.style.cursor = "grab";
+      drawnCircles.push({ circle, baseRadius });
       const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
       title.textContent = `${group.groupId}${group.annotation ? ` — ${group.annotation}` : ""} (${useCategories ? categoryFor(group) : group.freqClass}, degree ${degree.get(id) || 0})`;
       circle.appendChild(title);
@@ -542,7 +560,11 @@ export function renderNetworkGraph(container, data, opts = {}) {
         circle.addEventListener("pointerup", onUp);
       });
     }
+
+    applyVisualScale(); // re-apply any manual node-size/edge-width multiplier so it survives a redraw
   }
+
+  container.querySelectorAll("#ngNodeScale, #ngEdgeScale").forEach((el) => el.addEventListener("input", applyVisualScale));
 
   container.querySelectorAll("#ngDirection, #ngLayoutMode, #ngMaxSig, #ngCrossOnly, #ngTopN").forEach((el) => {
     el.addEventListener("input", () => refreshNote());
