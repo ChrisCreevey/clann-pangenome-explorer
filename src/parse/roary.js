@@ -61,6 +61,24 @@ function diagnoseEmptyLines(text) {
   return `Read ${len.toLocaleString()} characters, found line breaks, but only one non-empty line survived splitting — the content past the header may have been cut off. Sample of the start: ${sample}. If this file is very large, this can happen when the browser hits a memory limit partway through reading it; try a 64-bit browser with more available memory, or split the file.`;
 }
 
+function parseHeaderLine(headerLine) {
+  const delimiter = detectDelimiter(headerLine);
+  const header = splitDelimited(headerLine, delimiter);
+  const metaColCount = countLeadingMetadataColumns(header);
+  const genomeNames = header.slice(metaColCount);
+  const annotationIdx = header.findIndex((h) => /^annotation$/i.test(h.trim()));
+  return { delimiter, metaColCount, genomeNames, annotationIdx };
+}
+
+function parseDataLine(line, headerInfo) {
+  const { delimiter, metaColCount, genomeNames, annotationIdx } = headerInfo;
+  const row = splitDelimited(line, delimiter);
+  const groupId = row[0];
+  const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
+  const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
+  return { groupId, representativeId: groupId, annotation, rawRow };
+}
+
 export function parseRoary(text) {
   // Split on \n, \r\n, or a bare \r (classic-Mac-style line endings, which
   // some export tools still produce) — a plain /\r?\n/ never matches a lone
@@ -69,20 +87,43 @@ export function parseRoary(text) {
   if (lines.length < 2) {
     throw new Error(`Roary file has no data rows. ${diagnoseEmptyLines(text)}`);
   }
-  const delimiter = detectDelimiter(lines[0]);
-  const header = splitDelimited(lines[0], delimiter);
-  const metaColCount = countLeadingMetadataColumns(header);
-  const genomeNames = header.slice(metaColCount);
-  const annotationIdx = header.findIndex((h) => /^annotation$/i.test(h.trim()));
-
+  const headerInfo = parseHeaderLine(lines[0]);
   const groups = new Array(lines.length - 1);
   for (let i = 1; i < lines.length; i++) {
-    const row = splitDelimited(lines[i], delimiter);
-    const groupId = row[0];
-    const annotation = annotationIdx >= 0 ? (row[annotationIdx] || null) : null;
-    const rawRow = row.slice(metaColCount, metaColCount + genomeNames.length);
-    groups[i - 1] = { groupId, representativeId: groupId, annotation, rawRow };
+    groups[i - 1] = parseDataLine(lines[i], headerInfo);
   }
 
-  return { genomeNames, groups };
+  return { genomeNames: headerInfo.genomeNames, groups };
+}
+
+/**
+ * Same result as parseRoary, but consumes an async iterable of lines (see
+ * stream-lines.js) instead of one big string — the only way to load a
+ * multi-gigabyte matrix without materialising the whole file as a JS string
+ * first, which is what was silently failing (file.text() resolving to an
+ * empty string under memory pressure, with no error thrown at all).
+ */
+export async function parseRoaryStream(lineIterator) {
+  let headerInfo = null;
+  const groups = [];
+  let sawAnyLine = false;
+
+  for await (const line of lineIterator) {
+    if (line.length === 0) continue;
+    sawAnyLine = true;
+    if (!headerInfo) {
+      headerInfo = parseHeaderLine(line);
+      continue;
+    }
+    groups.push(parseDataLine(line, headerInfo));
+  }
+
+  if (!headerInfo || groups.length === 0) {
+    const detail = sawAnyLine
+      ? "Only a header line was found — no data rows followed it."
+      : "No content at all was read from the file — the browser may have run out of memory while streaming it (check DevTools' console/memory tab), or the upload itself is empty.";
+    throw new Error(`Roary file has no data rows. ${detail}`);
+  }
+
+  return { genomeNames: headerInfo.genomeNames, groups };
 }

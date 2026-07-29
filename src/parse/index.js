@@ -10,7 +10,7 @@
 // presence as a flat Uint16Array instead of one object per cell is what
 // makes 10,000-genome-scale studies feasible in a browser tab).
 
-import { parseRoary, looksLikeRoary } from "./roary.js";
+import { parseRoary, parseRoaryStream, looksLikeRoary } from "./roary.js";
 import { parsePirate, looksLikePirate } from "./pirate.js";
 import { parsePanacota, looksLikePanacota } from "./panacota.js";
 import { parseGenericMatrix } from "./generic-matrix.js";
@@ -52,6 +52,17 @@ export function parse(text, opts = {}) {
   else raw = parseGenericMatrix(text, opts);
 
   return buildPangenomeData(raw, { sourceFilename: opts.filename, format });
+}
+
+/**
+ * Same as parse(), but for a Roary/Panaroo matrix read via stream-lines.js
+ * instead of a fully-materialised text string — for files too large to
+ * safely hold as one JS string. Format must already be known to be 'roary'
+ * (callers detect this cheaply via peekFirstLine before choosing this path).
+ */
+export async function parseRoaryFromLines(lineIterator, opts = {}) {
+  const raw = await parseRoaryStream(lineIterator);
+  return buildPangenomeData(raw, { sourceFilename: opts.filename, format: "roary" });
 }
 
 /** Turn a raw { genomeNames, groups } shape into full PangenomeData with derived stats. */

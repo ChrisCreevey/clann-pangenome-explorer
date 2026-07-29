@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { parse, detectFormat, ColumnMappingNeeded, parsePresenceCell } from "../src/parse/index.js";
+import { parse, detectFormat, ColumnMappingNeeded, parsePresenceCell, parseRoaryFromLines } from "../src/parse/index.js";
 import { assignFrequencyClasses, frequencyClassCounts, frequencySpectrum, adjustThresholds, DEFAULT_THRESHOLDS } from "../src/analysis/frequency.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +16,29 @@ test("parsePresenceCell handles blank, numeric, and gene-ID-list cells", () => {
   assert.deepEqual(parsePresenceCell("2"), { copyCount: 2, geneIds: [] });
   assert.deepEqual(parsePresenceCell("groupA_1"), { copyCount: 1, geneIds: ["groupA_1"] });
   assert.deepEqual(parsePresenceCell("groupA_1;groupA_1b"), { copyCount: 2, geneIds: ["groupA_1", "groupA_1b"] });
+});
+
+/** Simulate stream-lines.js's line splitting straight off a string, for parseRoaryFromLines tests. */
+async function* linesOf(text) {
+  for (const line of text.split(/\r\n|\r|\n/)) yield line;
+}
+
+test("parseRoaryFromLines (streaming) matches parse() (in-memory) for the same Roary matrix", async () => {
+  const text = fixture("roary-small.csv");
+  const fromText = parse(text, { filename: "gene_presence_absence.csv" });
+  const fromStream = await parseRoaryFromLines(linesOf(text), { filename: "gene_presence_absence.csv" });
+
+  assert.deepEqual(fromStream.genomes.map((g) => g.name), fromText.genomes.map((g) => g.name));
+  assert.equal(fromStream.meta.groupCount, fromText.meta.groupCount);
+  assert.deepEqual(Array.from(fromStream.presenceMatrix), Array.from(fromText.presenceMatrix));
+  assert.deepEqual(fromStream.groups.map((g) => g.groupId), fromText.groups.map((g) => g.groupId));
+});
+
+test("parseRoaryFromLines throws a diagnostic error for a header-only stream", async () => {
+  await assert.rejects(
+    () => parseRoaryFromLines(linesOf("Gene,Non-unique Gene name,Annotation,G1,G2\n"), {}),
+    /no data rows/
+  );
 });
 
 test("detectFormat recognises Roary by header shape", () => {

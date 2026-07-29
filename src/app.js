@@ -5,16 +5,24 @@
 // flows removed — not part of this tool; will be replaced by CoinFinder
 // pair upload in a later phase).
 
-import { parse, ColumnMappingNeeded } from "./parse/index.js";
+import { parse, ColumnMappingNeeded, parseRoaryFromLines, splitDelimited, detectDelimiter } from "./parse/index.js";
 import { assignFrequencyClasses, adjustThresholds } from "./analysis/frequency.js";
 import { mountExplorer } from "./pangenome.js";
 import { renderColumnMapping } from "./render/column-mapping.js";
 import { decompressIfNeeded } from "./parse/compressed.js";
+import { readLines, peekFirstLine } from "./parse/stream-lines.js";
+import { looksLikeRoary } from "./parse/roary.js";
 import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB, reorderAnnotationSource } from "./parse/annotation.js";
 import { keywordTag, listUploadTag } from "./analysis/tags.js";
 import { parseCoinfinderFile } from "./parse/coinfinder.js";
 import { resolvePairs } from "./analysis/pairs.js";
-import { runBusy } from "./render/busy.js";
+import { runBusy, showBusy, hideBusy } from "./render/busy.js";
+
+// Above this size, an uncompressed Roary/Panaroo matrix is streamed line by
+// line instead of read into one JS string — see readTextFile below for what
+// goes wrong past this point (a decode that can silently resolve empty
+// instead of throwing, under memory pressure).
+const STREAM_THRESHOLD_BYTES = 200_000_000;
 
 const explorerEl = document.getElementById("explorer");
 const columnMappingEl = document.getElementById("columnMapping");
@@ -161,8 +169,47 @@ function formatBytes(bytes) {
   return `${bytes.toLocaleString()} bytes`;
 }
 
+/** Load a large uncompressed Roary/Panaroo matrix by streaming lines — never materialises the whole file as one string. */
+async function openFileStreaming(file) {
+  showBusy();
+  try {
+    const data = await parseRoaryFromLines(readLines(file), { filename: file.name });
+    loadData(data, file.name);
+  } catch (err) {
+    showError(`Couldn't parse ${file.name}: ${err && err.message ? err.message : err}`);
+  } finally {
+    hideBusy();
+  }
+}
+
 async function openFile(file) {
   if (!file) return;
+
+  if (file.size > STREAM_THRESHOLD_BYTES) {
+    try {
+      // Sniff compression cheaply (a few header bytes) — an uncompressed
+      // file this large gets the streaming path below; a compressed one
+      // still needs a full in-memory decompress with the current
+      // DecompressionStream-based unzip/gunzip, so it falls through to the
+      // ordinary path (this is a known remaining limitation for very large
+      // compressed uploads).
+      const decompressed = await decompressIfNeeded(file);
+      if (!decompressed) {
+        const firstLine = await peekFirstLine(file);
+        const delimiter = detectDelimiter(firstLine);
+        const header = splitDelimited(firstLine, delimiter);
+        if (file.name.toLowerCase().includes("gene_presence_absence") || looksLikeRoary(header)) {
+          await openFileStreaming(file);
+          return;
+        }
+      }
+    } catch {
+      // Streaming is an optimisation for the one format big enough to need
+      // it, not the only way to load a file — fall through to the ordinary
+      // full-text path below on any snag detecting it.
+    }
+  }
+
   let text, name;
   try { ({ text, filename: name } = await readTextFile(file)); }
   catch (err) { showError(`Couldn't read ${file.name}: ${err && err.message ? err.message : err}`); return; }
