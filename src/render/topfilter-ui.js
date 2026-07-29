@@ -12,7 +12,7 @@
 // new listener (and a new Undo history) on top of the old one each time a
 // new file is loaded.
 
-import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates, isNumericColumn } from "../analysis/topfilter.js";
+import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates, isNumericColumn, genomeNamesForPhenotypeValue } from "../analysis/topfilter.js";
 import { listTags } from "../analysis/tags.js";
 import { renderSingletonBarChart, renderMultiCopyHistogram } from "./charts.js";
 import { renderGroupTable, DEFAULT_COLS, COL_LABELS } from "./group-table.js";
@@ -251,10 +251,85 @@ function renderPatternMatchCard(panel, data) {
   });
 }
 
+/**
+ * The comma-separated text inputs remain the primary, always-available way
+ * to build a genome set — but typing hundreds of genome names by hand was
+ * never really practical once a study has more than a couple dozen
+ * genomes. When a genome-metadata file has been loaded (src/parse/genome-
+ * metadata.js), this adds a second way to fill the same two inputs: pick a
+ * phenotype column and two of its values, and the matching genome names
+ * are filled in automatically (still hand-editable afterward). This reuses
+ * twoGroupComparison() and the result table completely unchanged — the
+ * only new thing is how genomesA/genomesB get built.
+ */
+function wirePhenotypeSetBuilder(c, data) {
+  const phenotypeSources = data.meta.phenotypeSources || [];
+  if (!phenotypeSources.length) return;
+
+  const colSelect = c.querySelector("#tgPhenoCol");
+  const levelASelect = c.querySelector("#tgLevelA");
+  const levelBSelect = c.querySelector("#tgLevelB");
+  const coverageDiv = c.querySelector("#tgPhenoCoverage");
+  const tgA = c.querySelector("#tgA"), tgB = c.querySelector("#tgB");
+
+  for (const source of phenotypeSources) {
+    const opt = document.createElement("option");
+    opt.value = source.key;
+    opt.textContent = source.header;
+    colSelect.appendChild(opt);
+  }
+
+  function fillFromPhenotype() {
+    const key = colSelect.value;
+    const levelA = levelASelect.value, levelB = levelBSelect.value;
+    if (!key || !levelA || !levelB) return;
+    const genomesA = genomeNamesForPhenotypeValue(data, key, levelA);
+    const genomesB = genomeNamesForPhenotypeValue(data, key, levelB);
+    tgA.value = genomesA.join(", ");
+    tgB.value = genomesB.join(", ");
+    const total = data.genomes.length;
+    const excluded = total - genomesA.length - genomesB.length;
+    coverageDiv.textContent = levelA === levelB
+      ? "Level A and Level B must be different to compare."
+      : `Comparing ${genomesA.length} genome(s) (${levelA}) vs ${genomesB.length} genome(s) (${levelB}) — ${excluded} of ${total} total genome(s) not included (no value, or a different level, for this phenotype).`;
+  }
+
+  function populateLevels() {
+    const source = phenotypeSources.find((s) => s.key === colSelect.value);
+    const values = (source && source.distinctValues) || [];
+    for (const select of [levelASelect, levelBSelect]) {
+      select.innerHTML = "";
+      for (const v of values) {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+      }
+    }
+    if (values.length > 1) levelBSelect.selectedIndex = 1; // default A/B to two different values, not the same one twice
+    fillFromPhenotype();
+  }
+
+  colSelect.addEventListener("change", populateLevels);
+  levelASelect.addEventListener("change", fillFromPhenotype);
+  levelBSelect.addEventListener("change", fillFromPhenotype);
+  populateLevels();
+}
+
 function renderTwoGroupCard(panel, data) {
   const c = card("Two-group comparison");
+  const hasPhenotypes = (data.meta.phenotypeSources || []).length > 0;
   c.innerHTML += `
     <div class="hint">Descriptive odds ratio only — not a formal significance test.</div>
+    ${hasPhenotypes ? `
+    <div class="row"><label for="tgPhenoCol">Build from phenotype</label></div>
+    <select id="tgPhenoCol"></select>
+    <div class="row"><label for="tgLevelA">Level A</label></div>
+    <select id="tgLevelA"></select>
+    <div class="row"><label for="tgLevelB">Level B</label></div>
+    <select id="tgLevelB"></select>
+    <div class="hint" id="tgPhenoCoverage"></div>
+    ` : ""}
     <div class="row"><label>Genome set A (comma-separated)</label></div>
     <input type="text" id="tgA" placeholder="e.g. genome_001, genome_002">
     <div class="row"><label>Genome set B (comma-separated)</label></div>
@@ -265,6 +340,8 @@ function renderTwoGroupCard(panel, data) {
   resultDiv.style.marginTop = "10px";
   c.appendChild(resultDiv);
   panel.appendChild(c);
+
+  wirePhenotypeSetBuilder(c, data);
 
   c.querySelector("#tgRun").addEventListener("click", () => {
     const genomesA = parseGenomeList(c.querySelector("#tgA").value);

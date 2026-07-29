@@ -187,6 +187,14 @@
         <button class="act" id="loadDisassociatedBtn">Upload disassociated pairs…</button>
         <div class="hint" id="disassociatedStatus">No disassociated-pairs file loaded.</div>
       </details>
+
+      <details class="sect" id="rowGenomeMetadata">
+        <summary>Genome metadata (genomes)</summary>
+        <div class="hint">A genome-ID + one-or-more-trait file (e.g. resistant/susceptible, host, region) — one column per trait, keyed by genome name rather than gene group ID. Feeds the "Two-group comparison" card's phenotype-based genome-set builder.</div>
+        <button class="act" id="loadGenomeMetadataBtn">Upload genome metadata…</button>
+        <div class="hint" id="genomeMetadataStatus">No genome metadata loaded.</div>
+        <div id="genomeMetadataSourcesList"></div>
+      </details>
     </aside>
     <div id="sideResize" title="Drag to resize the panel · double-click to reset"></div>
     <div id="wrap">
@@ -287,6 +295,7 @@
 <input type="file" id="tagListFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <input type="file" id="associatedFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <input type="file" id="disassociatedFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
+<input type="file" id="genomeMetadataFileInput" accept=".csv,.tsv,.tab,.txt,.gz,.zip,text/plain" style="display:none">
 <script type="module" src="src/app.js"></script>
 </body>
 </html>

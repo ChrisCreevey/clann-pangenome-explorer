@@ -125,7 +125,10 @@ function assemblePangenomeData(genomeNames, groupsMeta, presenceMatrix, geneIdsB
     }
   }
 
-  const genomes = genomeNames.map((name, index) => ({ name, index, ...genomeTotals[index] }));
+  // phenotypes: {} mirrors groups' own annotationColumns/tags — always
+  // present so every consumer can assume the field exists, populated later
+  // (if at all) by genome-metadata.js's applyGenomeMetadata().
+  const genomes = genomeNames.map((name, index) => ({ name, index, phenotypes: {}, ...genomeTotals[index] }));
   const genomeNameToIndex = new Map(genomes.map((genome) => [genome.name, genome.index]));
 
   const data = {
@@ -136,6 +139,7 @@ function assemblePangenomeData(genomeNames, groupsMeta, presenceMatrix, geneIdsB
       groupCount,
       freqClassThresholds: { ...DEFAULT_THRESHOLDS },
       annotationSources: [],
+      phenotypeSources: [],
     },
     genomes,
     genomeNameToIndex,

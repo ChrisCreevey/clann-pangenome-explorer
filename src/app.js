@@ -16,6 +16,7 @@ import { detectAnnotationWorkflow, applyWorkflowA, applyWorkflowB, reorderAnnota
 import { keywordTag, listUploadTag } from "./analysis/tags.js";
 import { parseCoinfinderFile } from "./parse/coinfinder.js";
 import { resolvePairs } from "./analysis/pairs.js";
+import { applyGenomeMetadata } from "./parse/genome-metadata.js";
 import { runBusy, showBusy, hideBusy } from "./render/busy.js";
 
 // Above this size, an uncompressed Roary/Panaroo matrix is streamed line by
@@ -77,6 +78,8 @@ function loadData(data, name) {
   document.getElementById("tagListStatus").textContent = "";
   document.getElementById("associatedStatus").textContent = "No associated-pairs file loaded.";
   document.getElementById("disassociatedStatus").textContent = "No disassociated-pairs file loaded.";
+  document.getElementById("genomeMetadataStatus").textContent = "No genome metadata loaded.";
+  document.getElementById("genomeMetadataSourcesList").innerHTML = "";
   writeThresholdInputs(data.meta.freqClassThresholds);
   if (handle) handle = handle.setData(data);
   else handle = mountExplorer(explorerEl, data);
@@ -502,6 +505,44 @@ function wireCoinfinderUpload(inputId, btnId, statusId, direction) {
 }
 wireCoinfinderUpload("associatedFileInput", "loadAssociatedBtn", "associatedStatus", "associated");
 wireCoinfinderUpload("disassociatedFileInput", "loadDisassociatedBtn", "disassociatedStatus", "disassociated");
+
+// --- genome metadata (phenotype) upload — feeds the Two-group comparison
+// card's phenotype-based genome-set builder (topfilter-ui.js). Same
+// "report the ColumnMappingNeeded error, no interactive remap yet"
+// precedent as the CoinFinder uploads above (see their TODO).
+const genomeMetadataFileInput = document.getElementById("genomeMetadataFileInput");
+const genomeMetadataStatus = document.getElementById("genomeMetadataStatus");
+const genomeMetadataSourcesList = document.getElementById("genomeMetadataSourcesList");
+document.getElementById("loadGenomeMetadataBtn").addEventListener("click", () => genomeMetadataFileInput.click());
+
+function renderGenomeMetadataSourcesList() {
+  const sources = (currentData && currentData.meta.phenotypeSources) || [];
+  genomeMetadataSourcesList.innerHTML = "";
+  if (!sources.length) return;
+  const list = document.createElement("div");
+  list.className = "hint";
+  list.textContent = "Loaded columns: " + sources.map((s) => `${s.header} (${s.matched} genome${s.matched === 1 ? "" : "s"})`).join(", ");
+  genomeMetadataSourcesList.appendChild(list);
+}
+
+genomeMetadataFileInput.addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  genomeMetadataFileInput.value = "";
+  if (!f || !currentData) return;
+  let text, name;
+  try { ({ text, filename: name } = await readTextFile(f)); }
+  catch (err) { showError(`Couldn't read ${f.name}: ${err && err.message ? err.message : err}`); return; }
+  try {
+    const { matched, unmatchedIds, sources } = await runBusy(() => applyGenomeMetadata(currentData, text));
+    const columnList = sources.map((s) => s.header).join(", ");
+    genomeMetadataStatus.textContent = `${name}: ${matched} genome(s) matched — added column${sources.length === 1 ? "" : "s"} ${columnList}` +
+      (unmatchedIds.length ? `, ${unmatchedIds.length} unmatched genome ID(s).` : ".");
+    renderGenomeMetadataSourcesList();
+    refreshExplorer();
+  } catch (err) {
+    showError(`Couldn't parse ${name} as a genome metadata file: ${err && err.message ? err.message : err}`);
+  }
+});
 
 // --- footer: show the repo's live star count next to the "Like it?" button ---
 fetch("https://api.github.com/repos/ChrisCreevey/clann-pangenome-explorer")

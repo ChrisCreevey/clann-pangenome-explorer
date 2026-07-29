@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { parse } from "../src/parse/index.js";
-import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates, isNumericColumn } from "../src/analysis/topfilter.js";
+import { filterGroups, patternMatch, twoGroupComparison, singletonsPerGenome, multiCopyCandidates, isNumericColumn, genomeNamesForPhenotypeValue } from "../src/analysis/topfilter.js";
 import { applyWorkflowA } from "../src/parse/annotation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -86,6 +86,16 @@ test("filterGroups: missingAnnotationValue restricts to groups with no value (bl
   const hits = filterGroups(data, { missingAnnotationValue: [key] });
   // groupC: matched but blank cell; groupD: never matched at all — both count as "missing"
   assert.deepEqual(hits.map((g) => g.groupId).sort(), ["groupC", "groupD"]);
+});
+
+test("genomeNamesForPhenotypeValue matches only genomes with that exact value, excluding unset ones", () => {
+  const data = loadRoary(); // genomes G1, G2, G3
+  data.genomes.find((g) => g.name === "G1").phenotypes.resistance = "resistant";
+  data.genomes.find((g) => g.name === "G2").phenotypes.resistance = "susceptible";
+  // G3 left with no value at all for this key — must not match either level
+  assert.deepEqual(genomeNamesForPhenotypeValue(data, "resistance", "resistant"), ["G1"]);
+  assert.deepEqual(genomeNamesForPhenotypeValue(data, "resistance", "susceptible"), ["G2"]);
+  assert.deepEqual(genomeNamesForPhenotypeValue(data, "resistance", "nonexistent-level"), []);
 });
 
 test("patternMatch: present-in and absent-from both apply", () => {

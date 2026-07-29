@@ -137,6 +137,18 @@ export function twoGroupComparison(data, genomesA, genomesB) {
   }).sort((x, y) => Math.abs(y.pctA - y.pctB) - Math.abs(x.pctA - x.pctB));
 }
 
+/**
+ * Genome names carrying exactly `value` for imported phenotype column
+ * `key` (see genome-metadata.js) — the set-builder behind the Two-group
+ * comparison card's phenotype dropdowns. A genome with no value at all for
+ * this column (never in the metadata file, or blank for this column)
+ * matches neither this nor any other value, so it's naturally excluded
+ * from both sides of a comparison rather than being forced into one.
+ */
+export function genomeNamesForPhenotypeValue(data, key, value) {
+  return data.genomes.filter((g) => g.phenotypes[key] === value).map((g) => g.name);
+}
+
 /** Groups present in exactly one genome, grouped by which genome. */
 export function singletonsPerGenome(data) {
   const byGenome = new Map(data.genomes.map((g) => [g.name, []]));
