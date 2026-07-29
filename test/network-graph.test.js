@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { estimateLayoutSeconds, degreeCap, degreeOf, connectedComponents, componentCenters, circularLayout, gridLayout } from "../src/render/network-graph.js";
+import { estimateLayoutSeconds, degreeCap, degreeOf, connectedComponents, componentCenters, mergeSingletonComponents, circularLayout, gridLayout } from "../src/render/network-graph.js";
 
 test("estimateLayoutSeconds scales with n^2 (for UI hinting, not enforcement)", () => {
   const small = estimateLayoutSeconds(100);
@@ -110,6 +110,32 @@ test("componentCenters gives every component a distinct center, biggest componen
     assert.ok(c.x >= 0 && c.x <= 700);
     assert.ok(c.y >= 0 && c.y <= 400);
   });
+});
+
+test("mergeSingletonComponents is a no-op with zero or one singleton component", () => {
+  const compOf = new Map([["a", 0], ["b", 0], ["c", 1]]); // one 2-node cluster, one singleton
+  const result = mergeSingletonComponents(compOf, 2);
+  assert.equal(result.compOf, compOf); // same Map instance, untouched
+  assert.equal(result.compCount, 2);
+});
+
+test("mergeSingletonComponents merges every singleton into one shared component, leaving real clusters untouched", () => {
+  // {a,b} is a real 2-node cluster; c, d, e are each their own singleton.
+  const compOf = new Map([["a", 0], ["b", 0], ["c", 1], ["d", 2], ["e", 3]]);
+  const { compOf: merged, compCount } = mergeSingletonComponents(compOf, 4);
+  assert.equal(compCount, 2); // the real cluster, plus one shared orphan slot
+  assert.equal(merged.get("a"), merged.get("b")); // real cluster preserved
+  assert.equal(merged.get("c"), merged.get("d")); // all singletons share one slot
+  assert.equal(merged.get("d"), merged.get("e"));
+  assert.notEqual(merged.get("a"), merged.get("c")); // the real cluster isn't folded into the orphan slot
+});
+
+test("mergeSingletonComponents handles every node being its own singleton (all-disassociated graph)", () => {
+  const compOf = new Map([["a", 0], ["b", 1], ["c", 2]]);
+  const { compOf: merged, compCount } = mergeSingletonComponents(compOf, 3);
+  assert.equal(compCount, 1);
+  assert.equal(merged.get("a"), merged.get("b"));
+  assert.equal(merged.get("b"), merged.get("c"));
 });
 
 test("circularLayout places every node on the circle, evenly spaced, all within bounds", () => {

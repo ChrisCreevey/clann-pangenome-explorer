@@ -123,6 +123,41 @@ export function connectedComponents(nodeIds, edges) {
   return { compOf, compCount };
 }
 
+/**
+ * Merge every singleton (size-1) connected component into one shared
+ * pseudo-component. A node touched only by disassociated edges — very
+ * common in a real CoinFinder result — lands in its own singleton per
+ * connectedComponents' doc comment above; componentCenters below then gave
+ * each one its own grid cell, the same size as a 200-node cluster's,
+ * scattered across the whole grid by draw order. That's what put isolated
+ * nodes far from everything else: each was pulled toward its own lonely
+ * cell rather than toward any shared "everything unclustered" area. Real
+ * clusters (size >= 2) are left untouched — this only affects true
+ * singletons.
+ */
+export function mergeSingletonComponents(compOf, compCount) {
+  const sizes = new Array(compCount).fill(0);
+  for (const compId of compOf.values()) sizes[compId]++;
+  const singletonIds = new Set();
+  for (let i = 0; i < compCount; i++) if (sizes[i] === 1) singletonIds.add(i);
+  if (singletonIds.size <= 1) return { compOf, compCount }; // nothing to gain by merging 0 or 1 singleton
+
+  // Renumber non-singleton components into a dense 0..k-1 range, then give
+  // every former singleton one shared final slot.
+  const remap = new Map();
+  let next = 0;
+  for (let i = 0; i < compCount; i++) {
+    if (singletonIds.has(i)) continue;
+    remap.set(i, next++);
+  }
+  const orphanCompId = next;
+  const mergedCompOf = new Map();
+  for (const [id, compId] of compOf.entries()) {
+    mergedCompOf.set(id, singletonIds.has(compId) ? orphanCompId : remap.get(compId));
+  }
+  return { compOf: mergedCompOf, compCount: next + 1 };
+}
+
 /** A grid cell (roughly proportional to component size) for each component, largest first, so bigger clusters get more room. */
 export function componentCenters(compCount, compOf, width, height) {
   const sizes = new Array(compCount).fill(0);
@@ -196,13 +231,27 @@ function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS })
   const n = nodeIds.length;
   if (n <= 1) return new Map(nodeIds.map((id) => [id, { x: width / 2, y: height / 2 }]));
 
-  const { compOf, compCount } = connectedComponents(nodeIds, edges);
+  const raw = connectedComponents(nodeIds, edges);
+  const { compOf, compCount } = mergeSingletonComponents(raw.compOf, raw.compCount);
   const centers = componentCenters(compCount, compOf, width, height);
   const jitter = Math.min(width, height) / Math.max(4, Math.sqrt(compCount));
   const pos = new Map(nodeIds.map((id) => {
     const c = centers[compOf.get(id)];
     return [id, { x: c.x + (rng() - 0.5) * jitter, y: c.y + (rng() - 0.5) * jitter }];
   }));
+
+  // Associated-degree (not overall degree — a node can have plenty of
+  // disassociated edges and still be "unclustered") drives how hard each
+  // node gets pulled back toward its component center below. A node with
+  // no associated edges has nothing but repulsion/disassociation-push
+  // acting on it, so the same 1% pull everyone else gets is nowhere near
+  // enough to keep it from drifting arbitrarily far over 200 iterations.
+  const assocDegree = new Map(nodeIds.map((id) => [id, 0]));
+  for (const e of edges) {
+    if (e.pair.direction !== "associated") continue;
+    assocDegree.set(e.a, (assocDegree.get(e.a) || 0) + 1);
+    assocDegree.set(e.b, (assocDegree.get(e.b) || 0) + 1);
+  }
 
   const k = Math.sqrt((width * height) / n); // ideal spring length
   for (let iter = 0; iter < iterations; iter++) {
@@ -248,8 +297,9 @@ function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS })
       p.x += (d.x / dist) * capped;
       p.y += (d.y / dist) * capped;
       const c = centers[compOf.get(id)];
-      p.x += (c.x - p.x) * 0.01;
-      p.y += (c.y - p.y) * 0.01;
+      const pull = (assocDegree.get(id) || 0) > 0 ? 0.01 : 0.06; // ~6x stronger for a node with no associated edges to otherwise anchor it
+      p.x += (c.x - p.x) * pull;
+      p.y += (c.y - p.y) * pull;
     }
   }
 
@@ -257,14 +307,36 @@ function layoutNodes(nodeIds, edges, { width, height, iterations = ITERATIONS })
   // repulsion can push a sparse or disconnected graph's bounding box well
   // past the canvas size, and a weak centering pull alone doesn't guarantee
   // convergence within it.
+  //
+  // Bound on a percentile of positions, not the literal min/max, once
+  // there are enough nodes for that to be meaningful (n<20: too few points
+  // for a percentile to mean anything different from the min/max anyway,
+  // so just use those directly). A single still-remote node — the pull
+  // strength above makes this rare but doesn't guarantee it never happens
+  // — would otherwise single-handedly dictate the scale for every other
+  // node, shrinking the whole graph just to keep that one point on-screen.
+  // Clamping (not dropping) it back inside the margins after scaling means
+  // it's still drawn, just pinned near the edge instead of controlling the
+  // zoom level for everyone else.
   const margin = 24;
-  const xs = [...pos.values()].map((p) => p.x), ys = [...pos.values()].map((p) => p.y);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const xsAll = [...pos.values()].map((p) => p.x), ysAll = [...pos.values()].map((p) => p.y);
+  let minX, maxX, minY, maxY;
+  if (n >= 20) {
+    const pct = (arr, p) => arr[Math.min(arr.length - 1, Math.max(0, Math.round(p * (arr.length - 1))))];
+    const xsSorted = [...xsAll].sort((a, b) => a - b), ysSorted = [...ysAll].sort((a, b) => a - b);
+    minX = pct(xsSorted, 0.01); maxX = pct(xsSorted, 0.99);
+    minY = pct(ysSorted, 0.01); maxY = pct(ysSorted, 0.99);
+  } else {
+    minX = Math.min(...xsAll); maxX = Math.max(...xsAll);
+    minY = Math.min(...ysAll); maxY = Math.max(...ysAll);
+  }
   const spanX = maxX - minX || 1, spanY = maxY - minY || 1;
   const scale = Math.min((width - 2 * margin) / spanX, (height - 2 * margin) / spanY, 1);
   for (const p of pos.values()) {
     p.x = margin + (p.x - minX) * scale + Math.max(0, (width - 2 * margin - spanX * scale)) / 2;
     p.y = margin + (p.y - minY) * scale + Math.max(0, (height - 2 * margin - spanY * scale)) / 2;
+    p.x = Math.min(width - margin, Math.max(margin, p.x));
+    p.y = Math.min(height - margin, Math.max(margin, p.y));
   }
 
   return pos;
