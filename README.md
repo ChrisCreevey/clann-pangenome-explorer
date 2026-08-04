@@ -1,8 +1,10 @@
 # Clann Pangenome Explorer
 
+# **Use it online here [chriscreevey.github.io/clann-pangenome-explorer](https://chriscreevey.github.io/clann-pangenome-explorer/)**
+
 A free, browser-only tool for exploring pangenome outputs (Roary, Panaroo, PIRATE, PanACoTA) joined with gene annotations and CoinFinder co-occurrence results — the third tool in the Clann suite, alongside [Clann Tree Viewer](https://github.com/ChrisCreevey/clann-tree-viewer) and [Clann BLAST Explorer](https://github.com/ChrisCreevey/clann-blast-explorer).
 
-**Live at [chriscreevey.github.io/clann-pangenome-explorer](https://chriscreevey.github.io/clann-pangenome-explorer/)**
+
 
 Everything runs locally in your browser; nothing is uploaded to a server.
 
