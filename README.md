@@ -81,3 +81,12 @@ Presence/absence data is stored as a flat typed array (2 bytes per group-per-gen
 For reference, the 10,000×20,000 case previously required an estimated >11GB of heap and took ~30s just to render (before the accumulation-curve computation was optimised) — combined, it would have crashed most browser tabs outright. Once loaded, filtering, tagging, and sorting stay fast (tens of milliseconds) regardless of dataset size, since none of those operations re-touch the full matrix.
 
 The practical ceiling is still the browser tab's own memory limit (commonly ~4GB) rather than any limit in the code — a dataset roughly an order of magnitude past the numbers above (tens of thousands of genomes with a large accessory genome) is where memory, not computation time, would likely become the binding constraint.
+
+## Funding
+
+Part of **HoloR-Tools** from the [HoloRuminant](https://holoruminant.eu/) project. This tool was
+developed with financial support from the European Union's Horizon 2020 research and innovation
+programme under grant agreement N° 101000213-HoloRuminant.
+
+This publication reflects the views only of the author, and not the European Commission (EC); the
+EC is not liable for any use that may be made of the information contained herein.
